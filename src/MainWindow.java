@@ -1,4 +1,5 @@
 import javax.swing.*;
+import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
@@ -23,7 +24,7 @@ public class MainWindow extends JFrame {
 
     public MainWindow() {
         setTitle("Учет документов СМК Испытательной Лаборатории (x86/x64)");
-        setSize(1200, 680);
+        setSize(1250, 680);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
@@ -46,7 +47,7 @@ public class MainWindow extends JFrame {
         topPanel.add(searchLabel);
         topPanel.add(searchField);
 
-        // --- ВКТАДКИ С ТАБЛИЦАМИ ---
+        // --- ВКЛАДКИ С ТАБЛИЦАМИ ---
         tabbedPane = new JTabbedPane();
         String[] tabShortTitles = {"Уровень 1", "Уровень 2", "Уровень 3", "Уровень 4", "Уровень 5"};
         String[] tabDescriptions = {
@@ -57,10 +58,14 @@ public class MainWindow extends JFrame {
                 "Состав уровня: Документы внешнего происхождения, содержащие свидетельства выполнения требований"
         };
 
+        // Единственный корректный цикл создания 5 вкладок с таблицами
         for (int i = 0; i < 5; i++) {
             tableModels[i] = DocumentTableManager.createTableModel();
             tableSorters[i] = new TableRowSorter<>(tableModels[i]);
             tables[i] = DocumentTableManager.createTable(tableModels[i], tableSorters[i]);
+
+            // ПРИМЕНЯЕМ ПОДКРАШИВАНИЕ СТРОК ДЛЯ ВСЕХ КОЛОНОК ТАБЛИЦЫ
+            applyRowColoring(tables[i]);
 
             tables[i].addMouseListener(new MouseAdapter() {
                 @Override
@@ -73,8 +78,8 @@ public class MainWindow extends JFrame {
 
             JScrollPane scrollPane = new JScrollPane(tables[i]);
             JPanel tabContentPanel = new JPanel(new BorderLayout(5, 5));
-            JLabel descLabel = new JLabel(tabDescriptions[i]);
-            descLabel.setFont(new Font("Arial", Font.BOLD, 12));
+            JLabel descLabel = new JLabel("<html><i style='color:gray;'>" + tabDescriptions[i] + "</i></html>");
+            descLabel.setFont(new Font("Arial", Font.PLAIN, 12));
             descLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
 
             tabContentPanel.add(descLabel, BorderLayout.NORTH);
@@ -82,7 +87,7 @@ public class MainWindow extends JFrame {
             tabbedPane.addTab(tabShortTitles[i], tabContentPanel);
         }
 
-        // Подключаем менеджер быстрого поиска
+        // Менеджер поиска
         filterManager = new DocumentFilterManager(searchField, tableSorters, tabbedPane);
 
         tabbedPane.addChangeListener(e -> {
@@ -93,7 +98,7 @@ public class MainWindow extends JFrame {
         // --- НИЖНЯЯ ПАНЕЛЬ СТАТУСА ---
         JPanel bottomPanel = new JPanel(new BorderLayout());
         bottomPanel.setBorder(BorderFactory.createEtchedBorder());
-        statusLabelLeft = new JLabel("НА УРОВНЕ 1: Всего: 0 | Действует: 0 | Заменен: 0 | В архиве: 0");
+        statusLabelLeft = new JLabel("НА УРОВНЕ 1: Всего: 0 | Действует: 0 | В работе: 0 | В архиве: 0 | Отменен: 0");
         statusLabelRight = new JLabel("| ИТОГО В БАЗЕ СМК: 0 документов ");
         statusLabelLeft.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5));
         statusLabelRight.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5));
@@ -162,7 +167,8 @@ public class MainWindow extends JFrame {
                     doc.getStorageCopies(), doc.getCopyCount(), doc.getStatus()
             });
 
-            DocumentTableManager.updateRowHeights(tables[tabIndex]);
+            // Пересчитываем высоту после добавления HTML-разметки
+            SwingUtilities.invokeLater(() -> DocumentTableManager.updateRowHeights(tables[tabIndex]));
         }
     }
 
@@ -278,6 +284,10 @@ public class MainWindow extends JFrame {
 
                     tabbedPane.setSelectedIndex(newTabIndex);
                     DocumentTableManager.updateRowHeights(tables[newTabIndex]);
+
+                    // Принудительное обновление новой таблицы
+                    tableModels[newTabIndex].fireTableDataChanged();
+                    tables[newTabIndex].repaint();
                 } else {
                     currentModel.setValueAt(docToEdit.getId(), modelRow, 0);
                     currentModel.setValueAt(docToEdit.getTitle(), modelRow, 1);
@@ -290,7 +300,12 @@ public class MainWindow extends JFrame {
                     currentModel.setValueAt(docToEdit.getCopyCount(), modelRow, 8);
                     currentModel.setValueAt(docToEdit.getStatus(), modelRow, 9);
 
+                    // КЛЮЧЕВОЙ МОМЕНТ: Уведомляем модель и таблицу об изменении всей строки
+                    currentModel.fireTableRowsUpdated(modelRow, modelRow);
+
                     DocumentTableManager.updateRowHeights(currentTable);
+                    currentTable.revalidate();
+                    currentTable.repaint();
                 }
 
                 AuditLogger.getInstance().log(
@@ -306,17 +321,27 @@ public class MainWindow extends JFrame {
     }
 
     private void updateStatus(int level) {
-        int total = 0, active = 0, replaced = 0, archive = 0;
+        int total = 0, active = 0, inProgress = 0, archive = 0, canceled = 0;
+
         for (Document doc : documentList) {
             if (doc.getSmkLevel() == level) {
                 total++;
-                if (doc.getStatus().equalsIgnoreCase("Действует")) active++;
-                else if (doc.getStatus().equalsIgnoreCase("Заменен")) replaced++;
-                else archive++;
+                String status = doc.getStatus().trim();
+
+                if (status.equalsIgnoreCase("Действует")) {
+                    active++;
+                } else if (status.equalsIgnoreCase("В работе")) {
+                    inProgress++;
+                } else if (status.equalsIgnoreCase("В архиве")) {
+                    archive++;
+                } else if (status.equalsIgnoreCase("Отменен") || status.equalsIgnoreCase("Отменён")) {
+                    canceled++;
+                }
             }
         }
-        statusLabelLeft.setText(String.format("НА УРОВНЕ %d: Всего: %d | Действует: %d | Заменен: %d | В архиве: %d",
-                level, total, active, replaced, archive));
+
+        statusLabelLeft.setText(String.format("НА УРОВНЕ %d: Всего: %d | Действует: %d | В работе: %d | В архиве: %d | Отменен: %d",
+                level, total, active, inProgress, archive, canceled));
         statusLabelRight.setText(String.format("| ИТОГО В БАЗЕ СМК: %d документов ", documentList.size()));
     }
 
@@ -329,5 +354,18 @@ public class MainWindow extends JFrame {
 
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> new MainWindow().setVisible(true));
+    }
+
+    /**
+     * Назначает подкрашивание строк по полю статуса
+     */
+    private void applyRowColoring(JTable table) {
+        // Находим колонку по названию, а не по фиксированному номеру
+        StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус");
+
+        table.setDefaultRenderer(Object.class, renderer);
+        for (int i = 0; i < table.getColumnCount(); i++) {
+            table.getColumnModel().getColumn(i).setCellRenderer(renderer);
+        }
     }
 }

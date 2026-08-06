@@ -14,7 +14,7 @@ public class AddDocumentDialog extends JDialog {
 
     private JComboBox<Integer> smkLevelCombo;
     private JComboBox<String> originCombo;
-    private JComboBox<String> statusCombo;
+    private JComboBox<String> statusComboBox;
     private JSpinner copyCountSpinner;
 
     private Document createdDocument = null;
@@ -57,12 +57,12 @@ public class AddDocumentDialog extends JDialog {
         initUI();
 
         if (docToEdit != null) {
-            populateFieldsForEditing();
+            populateFieldsForEditing(docToEdit);
         }
     }
 
     private void initUI() {
-        setSize(580, 630);
+        setSize(580, 650);
         setLocationRelativeTo(getParent());
         setResizable(false);
 
@@ -73,6 +73,7 @@ public class AddDocumentDialog extends JDialog {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.insets = new Insets(4, 4, 4, 4);
 
+        // --- ИНИЦИАЛИЗА КОМПОНЕНТОВ ---
         idField = new JTextField();
         datePicker = new DatePickerPanel();
         actualizationDatePicker = new DatePickerPanel();
@@ -84,17 +85,57 @@ public class AddDocumentDialog extends JDialog {
 
         smkLevelCombo = new JComboBox<>(new Integer[]{1, 2, 3, 4, 5});
         originCombo = new JComboBox<>(new String[]{"Внутренний", "Внешний"});
-        statusCombo = new JComboBox<>(new String[]{"Действует", "Заменен", "Отменен", "В работе", "Архив"});
+
+        String[] statuses = {"Действует", "В работе", "В архиве", "Отменен"};
+        statusComboBox = new JComboBox<>(statuses);
+
         copyCountSpinner = new JSpinner(new SpinnerNumberModel(0, 0, 1000, 1));
 
+        // Настройка блокировки ID/Шифра
+        idField.setEditable(false);
         idField.setBackground(new Color(245, 245, 245));
+        idField.setToolTipText("Двойной клик для изменения (требуется пароль)");
 
-        // Обработчик выбора уровня СМК
+        // Настройка блокировки уровня СМК (для режима редактирования)
+        if (isEditMode) {
+            smkLevelCombo.setEnabled(false);
+            smkLevelCombo.setToolTipText("Двойной клик для изменения (требуется пароль)");
+        }
+
+        // --- ДВОЙНОЙ КЛИК ПО ПОЛЮ ID / ШИФР ---
+        idField.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && !idField.isEditable()) {
+                    if (PasswordProtectionManager.requestAdminAccess(AddDocumentDialog.this)) {
+                        idField.setEditable(true);
+                        idField.setBackground(Color.WHITE);
+                        idField.requestFocus();
+                        JOptionPane.showMessageDialog(AddDocumentDialog.this, "Поле 'ID / Шифр' разблокировано для редактирования.", "Доступ разрешен", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                }
+            }
+        });
+
+        // --- ДВОЙНОЙ КЛИК ПО ВЫПАДАЮЩЕМУ СПИСКУ УРОВНЯ СМК ---
+        smkLevelCombo.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && !smkLevelCombo.isEnabled()) {
+                    if (PasswordProtectionManager.requestAdminAccess(AddDocumentDialog.this)) {
+                        smkLevelCombo.setEnabled(true);
+                        smkLevelCombo.requestFocus();
+                        JOptionPane.showMessageDialog(AddDocumentDialog.this, "Выпадающий список 'Уровень СМК' разблокирован.", "Доступ разрешен", JOptionPane.INFORMATION_MESSAGE);
+                    }
+                }
+            }
+        });
+
+        // --- ОБРАБОТЧИК ВЫБОРА УРОВНЯ СМК ---
         smkLevelCombo.addActionListener(e -> {
             if (smkLevelCombo.getSelectedItem() == null) return;
             int selectedLevel = (int) smkLevelCombo.getSelectedItem();
 
-            // Генерируем новый ID ТОЛЬКО при создании нового документа!
             if (!isEditMode && mainWin != null) {
                 int nextNumber = mainWin.getDocumentCountByLevel(selectedLevel) + 1;
                 String generatedId = "УР" + selectedLevel + "-" + String.format("%02d", nextNumber);
@@ -104,41 +145,76 @@ public class AddDocumentDialog extends JDialog {
             updateFieldsStateByLevel(selectedLevel);
         });
 
-        // Разблокировка по двойному клику
-        MouseAdapter doubleClickUnlockAdapter = new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
-                    if (smkLevelCombo.isEnabled() && idField.isEditable()) {
-                        return;
-                    }
-
-                    if (PasswordProtectionManager.requestAdminAccess(AddDocumentDialog.this)) {
-                        smkLevelCombo.setEnabled(true);
-                        idField.setEditable(true);
-                        idField.setBackground(Color.WHITE);
-                    }
-                }
-            }
-        };
-
-        smkLevelCombo.addMouseListener(doubleClickUnlockAdapter);
-        idField.addMouseListener(doubleClickUnlockAdapter);
-
-        // Расстановка полей
+        // --- РАЗМЕЩЕНИЕ ЭЛЕМЕНТОВ В GRIDBAGLAYOUT ---
         int row = 0;
-        addFormRow(formPanel, gbc, "Уровень СМК:", smkLevelCombo, row++, false);
-        addFormRow(formPanel, gbc, "ID / Шифр:", idField, row++, false);
-        addFormRow(formPanel, gbc, "Название документа:", new JScrollPane(titleArea), row++, true);
-        addFormRow(formPanel, gbc, "Версия (только 1-3 ур.):", versionField, row++, false);
-        addFormRow(formPanel, gbc, "Происхождение:", originCombo, row++, false);
-        addFormRow(formPanel, gbc, "Дата регистрации:", datePicker, row++, false);
-        addFormRow(formPanel, gbc, "Дата актуализации (4-5 ур.):", actualizationDatePicker, row++, false);
-        addFormRow(formPanel, gbc, "Хранение оригинала:", new JScrollPane(storageOriginalArea), row++, true);
-        addFormRow(formPanel, gbc, "Хранение копий:", new JScrollPane(storageCopiesArea), row++, true);
-        addFormRow(formPanel, gbc, "Кол-во копий:", copyCountSpinner, row++, false);
-        addFormRow(formPanel, gbc, "Текущий статус:", statusCombo, row++, false);
 
+        // Уровень СМК
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Уровень СМК:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(smkLevelCombo, gbc);
+
+        // ID / Шифр
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("ID / Шифр:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(idField, gbc);
+
+        // Название документа
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Название документа:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(new JScrollPane(titleArea), gbc);
+
+        // Версия
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Версия / Редакция:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(versionField, gbc);
+
+        // Происхождение
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Происхождение:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(originCombo, gbc);
+
+        // Дата регистрации
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Дата регистрации:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(datePicker, gbc);
+
+        // Дата актуализации
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Дата актуализации:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(actualizationDatePicker, gbc);
+
+        // Хранение оригинала
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Место хранения оригинала:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(new JScrollPane(storageOriginalArea), gbc);
+
+        // Хранение копий
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Место хранения копий:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(new JScrollPane(storageCopiesArea), gbc);
+
+        // Кол-во копий
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Количество копий:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(copyCountSpinner, gbc);
+
+        // Статус документа
+        gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
+        formPanel.add(new JLabel("Статус документа:"), gbc);
+        gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
+        formPanel.add(statusComboBox, gbc);
+
+        // --- КНОПКИ УПРАВЛЕНИЯ ---
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
         JButton saveButton = new JButton("Сохранить");
         JButton cancelButton = new JButton("Отмена");
@@ -149,31 +225,29 @@ public class AddDocumentDialog extends JDialog {
         buttonPanel.add(saveButton);
         buttonPanel.add(cancelButton);
 
-        add(formPanel, BorderLayout.CENTER);
+        // --- ДОБАВЛЕНИЕ ПАНЕЛЕЙ В ДИАЛОГ ---
+        setLayout(new BorderLayout());
+        add(new JScrollPane(formPanel), BorderLayout.CENTER);
         add(buttonPanel, BorderLayout.SOUTH);
-
-        if (!isEditMode) {
-            smkLevelCombo.setSelectedIndex(0);
-        }
     }
 
-    private void populateFieldsForEditing() {
-        smkLevelCombo.setSelectedItem(docToEdit.getSmkLevel());
-        idField.setText(docToEdit.getId());
-        idField.setEditable(false);
-        smkLevelCombo.setEnabled(false); // Запрещаем случайно менять уровень при редактировании
+    private void populateFieldsForEditing(Document doc) {
+        idField.setText(doc.getId());
+        smkLevelCombo.setSelectedItem(doc.getSmkLevel());
+        titleArea.setText(doc.getTitle());
+        versionField.setText(doc.getVersion());
+        originCombo.setSelectedItem(doc.getOrigin());
 
-        titleArea.setText(docToEdit.getTitle());
-        versionField.setText(docToEdit.getVersion());
-        originCombo.setSelectedItem(docToEdit.getOrigin());
-        datePicker.setText(docToEdit.getDate());
-        actualizationDatePicker.setText(docToEdit.getActualizationDate());
-        storageOriginalArea.setText(docToEdit.getStorageOriginal());
-        storageCopiesArea.setText(docToEdit.getStorageCopies());
-        copyCountSpinner.setValue(docToEdit.getCopyCount());
-        statusCombo.setSelectedItem(docToEdit.getStatus());
+        datePicker.setText(doc.getDate());
+        actualizationDatePicker.setText(doc.getActualizationDate());
 
-        updateFieldsStateByLevel(docToEdit.getSmkLevel());
+        storageOriginalArea.setText(doc.getStorageOriginal());
+        storageCopiesArea.setText(doc.getStorageCopies());
+        copyCountSpinner.setValue(doc.getCopyCount());
+
+        if (statusComboBox != null) {
+            statusComboBox.setSelectedItem(doc.getStatus());
+        }
     }
 
     private void onSave() {
@@ -260,7 +334,7 @@ public class AddDocumentDialog extends JDialog {
                 idField.getText().trim(),
                 title,
                 datePicker.getText(),
-                (String) statusCombo.getSelectedItem(),
+                (String) statusComboBox.getSelectedItem(),
                 selectedLevel,
                 (String) originCombo.getSelectedItem(),
                 versionField.getText().trim(),
@@ -301,33 +375,8 @@ public class AddDocumentDialog extends JDialog {
         return area;
     }
 
-    private void addFormRow(JPanel panel, GridBagConstraints gbc, String labelText, Component component, int row, boolean isMultiLine) {
-        gbc.gridy = row;
-        gbc.gridx = 0;
-        gbc.gridwidth = 1;
-        gbc.gridheight = 1;
-        gbc.weightx = 0.0;
-        gbc.weighty = 0.0;
-        gbc.fill = GridBagConstraints.NONE;
-        gbc.anchor = GridBagConstraints.NORTHWEST;
-        panel.add(new JLabel(labelText), gbc);
-
-        gbc.gridx = 1;
-        gbc.weightx = 1.0;
-
-        if (isMultiLine) {
-            gbc.weighty = 1.0;
-            gbc.fill = GridBagConstraints.BOTH;
-            component.setPreferredSize(new Dimension(280, 42));
-        } else {
-            gbc.weighty = 0.0;
-            gbc.fill = GridBagConstraints.HORIZONTAL;
-            component.setPreferredSize(new Dimension(280, 24));
-        }
-        panel.add(component, gbc);
-    }
-
     public Document getCreatedDocument() {
-        return confirmed ? createdDocument : null;
+        if (!confirmed) return null;
+        return createdDocument;
     }
 }

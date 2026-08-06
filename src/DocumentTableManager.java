@@ -18,9 +18,12 @@ public class DocumentTableManager {
     public static JTable createTable(DefaultTableModel model, TableRowSorter<DefaultTableModel> sorter) {
         JTable table = new JTable(model);
         table.setRowSorter(sorter);
-        table.setDefaultRenderer(Object.class, new WordWrapCellRenderer());
         table.setRowHeight(25);
 
+        // 1. Устанавливаем наш рендерер с подсветкой и переносом текста
+        applyRowColoring(table);
+
+        // 2. Настраиваем ширину колонок
         TableColumnModel colModel = table.getColumnModel();
         colModel.getColumn(0).setPreferredWidth(80);
         colModel.getColumn(1).setPreferredWidth(350);
@@ -33,6 +36,7 @@ public class DocumentTableManager {
         colModel.getColumn(8).setPreferredWidth(80);
         colModel.getColumn(9).setPreferredWidth(90);
 
+        // 3. Слушатель изменения ширины столбцов мышкой
         colModel.addColumnModelListener(new javax.swing.event.TableColumnModelListener() {
             @Override public void columnMarginChanged(javax.swing.event.ChangeEvent e) {
                 updateRowHeights(table);
@@ -43,7 +47,27 @@ public class DocumentTableManager {
             @Override public void columnSelectionChanged(javax.swing.event.ListSelectionEvent e) {}
         });
 
-        return table;
+        // 4. Расчет высот после того, как Swing закончит layout
+        SwingUtilities.invokeLater(() -> updateRowHeights(table));
+
+        return table; // Единая точка выхода из метода
+    }
+
+    private static void applyRowColoring(JTable table) {
+        StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус");
+
+        table.setDefaultRenderer(Object.class, renderer);
+        for (int i = 0; i < table.getColumnCount(); i++) {
+            table.getColumnModel().getColumn(i).setCellRenderer(renderer);
+        }
+
+        // Автоматический перерасчет высоты при изменении размера окна
+        table.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                DocumentTableManager.updateRowHeights(table);
+            }
+        });
     }
 
     public static DefaultTableModel createTableModel() {
@@ -56,31 +80,25 @@ public class DocumentTableManager {
     }
 
     public static void updateRowHeights(JTable table) {
-        if (table.getRowCount() == 0) return;
-
         for (int row = 0; row < table.getRowCount(); row++) {
-            int maxRowHeight = 25;
+            int rowHeight = 25; // Минимальная высота строки
 
-            for (int col = 0; col < table.getColumnCount(); col++) {
-                TableCellRenderer renderer = table.getCellRenderer(row, col);
-                Component comp = table.prepareRenderer(renderer, row, col);
+            for (int column = 0; column < table.getColumnCount(); column++) {
+                TableCellRenderer renderer = table.getCellRenderer(row, column);
+                Component comp = table.prepareRenderer(renderer, row, column);
 
-                int columnWidth = table.getColumnModel().getColumn(col).getWidth();
-
+                // Передаем текущую ширину колонки для правильного расчете высоты текста
+                int columnWidth = table.getColumnModel().getColumn(column).getWidth();
                 if (columnWidth > 0) {
-                    comp.setSize(new Dimension(columnWidth, 1000));
-                    int preferredHeight = comp.getPreferredSize().height;
-
-                    if (preferredHeight > maxRowHeight) {
-                        maxRowHeight = preferredHeight;
-                    }
+                    comp.setSize(columnWidth, Integer.MAX_VALUE);
                 }
+
+                int preferredHeight = comp.getPreferredSize().height;
+                rowHeight = Math.max(rowHeight, preferredHeight);
             }
 
-            maxRowHeight = Math.min(maxRowHeight, 150);
-
-            if (table.getRowHeight(row) != maxRowHeight) {
-                table.setRowHeight(row, maxRowHeight);
+            if (table.getRowHeight(row) != rowHeight) {
+                table.setRowHeight(row, rowHeight);
             }
         }
     }
