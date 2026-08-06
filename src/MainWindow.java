@@ -30,20 +30,26 @@ public class MainWindow extends JFrame {
 
         // --- ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ И ПОИСКОМ ---
         JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+
         JButton addButton = new JButton("Добавить документ");
         JButton editButton = new JButton("Изменить выбранный");
         JButton deleteButton = new JButton("Удалить выбранный");
+        JButton btnSave = new JButton("Сохранить данные"); // Перенесли ближе к кнопкам действия
         JButton auditButton = new JButton("Журнал аудита");
         JButton passwordButton = new JButton("Сменить пароль");
 
         JLabel searchLabel = new JLabel("Быстрый поиск:");
-        searchField = new JTextField(20);
+        searchField = new JTextField(15); // Немного уменьшили ширину с 20 до 15, чтобы всё свободно влазило
 
+// 1. Сначала добавляем все кнопки управления
         topPanel.add(addButton);
         topPanel.add(editButton);
         topPanel.add(deleteButton);
+        topPanel.add(btnSave); // Теперь сохранение идет рядом с кнопками управления
         topPanel.add(auditButton);
         topPanel.add(passwordButton);
+
+// 2. В самом конце добавляем подпись и текстовое поле поиска
         topPanel.add(searchLabel);
         topPanel.add(searchField);
 
@@ -113,6 +119,7 @@ public class MainWindow extends JFrame {
         addButton.addActionListener(e -> onAddDocumentButtonClicked());
         editButton.addActionListener(e -> openEditDialog());
         deleteButton.addActionListener(e -> deleteSelectedDocument());
+        btnSave.addActionListener(e -> exportCurrentTabToExcel()); // Назначение действия
 
         auditButton.addActionListener(e -> {
             if (PasswordProtectionManager.requestAdminAccess(this)) {
@@ -133,6 +140,19 @@ public class MainWindow extends JFrame {
                 DocumentTableManager.updateRowHeights(tables[i]);
             }
         });
+    }
+
+    /**
+     * Экспорт данных из открытой вкладки в файл Excel
+     */
+    private void exportCurrentTabToExcel() {
+        JTable currentTable = getCurrentTable();
+        int selectedIndex = tabbedPane.getSelectedIndex();
+
+        if (currentTable != null && selectedIndex != -1) {
+            String tabTitle = tabbedPane.getTitleAt(selectedIndex);
+            ExcelExporter.exportTableToExcel(currentTable, tabTitle, this);
+        }
     }
 
     private void onAddDocumentButtonClicked() {
@@ -353,6 +373,17 @@ public class MainWindow extends JFrame {
                 "05.08.2026", "Действует", 1, "Внутренний", "v2.0", "Сейф №1", "Сервер СМК", 2, "01.06.2026"));
         addDocument(new Document("УР4-01", "ГОСТ ISO/IEC 17025-2019 Общие требования к компетентности испытательных лабораторий",
                 "12.01.2024", "Действует", 4, "Внешний", "", "Архив", "Полка №2", 1, "15.03.2026"));
+    }
+
+    /**
+     * Получение таблицы из текущей выбранной вкладки
+     */
+    private JTable getCurrentTable() {
+        int selectedIndex = tabbedPane.getSelectedIndex();
+        if (selectedIndex != -1 && tables != null && selectedIndex < tables.length) {
+            return tables[selectedIndex];
+        }
+        return null;
     }
 
     public static void main(String[] args) {
