@@ -137,8 +137,8 @@ public class AddDocumentDialog extends JDialog {
             int selectedLevel = (int) smkLevelCombo.getSelectedItem();
 
             if (!isEditMode && mainWin != null) {
-                int nextNumber = mainWin.getDocumentCountByLevel(selectedLevel) + 1;
-                String generatedId = "УР" + selectedLevel + "-" + String.format("%02d", nextNumber);
+                // Генерирует шифр формата "УР_1-1", "УР_1-2" без дублирования
+                String generatedId = DocumentCodeGenerator.generateNextMaxCode(selectedLevel, mainWin.getDocumentList());
                 idField.setText(generatedId);
             }
 

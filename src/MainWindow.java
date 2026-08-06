@@ -371,4 +371,8 @@ public class MainWindow extends JFrame {
             table.getColumnModel().getColumn(i).setCellRenderer(renderer);
         }
     }
+
+    public List<Document> getDocumentList() {
+        return documentList;
+    }
 }
