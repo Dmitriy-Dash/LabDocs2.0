@@ -303,6 +303,9 @@ public class MainWindow extends JFrame {
                     // КЛЮЧЕВОЙ МОМЕНТ: Уведомляем модель и таблицу об изменении всей строки
                     currentModel.fireTableRowsUpdated(modelRow, modelRow);
 
+                    // --- СБРАСЫВАЕМ ВЫДЕЛЕНИЕ ПОСЛЕ ЗАКРЫТИЯ ДИАЛОГА ---
+                    currentTable.clearSelection();
+
                     DocumentTableManager.updateRowHeights(currentTable);
                     currentTable.revalidate();
                     currentTable.repaint();
