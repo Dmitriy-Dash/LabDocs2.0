@@ -1,0 +1,128 @@
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+public class Document {
+    private String id;
+    private String title;
+    private String date;
+    private String status;
+    private int smkLevel;
+    private String origin;
+    private String version;
+    private String storageOriginal;
+    private String storageCopies;
+    private int copyCount;
+    private String actualizationDate;
+
+    public Document(String id, String title, String date, String status, int smkLevel,
+                    String origin, String version, String storageOriginal, String storageCopies,
+                    int copyCount, String actualizationDate) {
+        this.id = id;
+        this.title = title;
+        this.date = date;
+        this.status = status;
+        this.smkLevel = smkLevel;
+        this.origin = origin;
+        this.storageOriginal = storageOriginal;
+        this.storageCopies = storageCopies;
+        this.copyCount = copyCount;
+        this.actualizationDate = actualizationDate;
+
+        if (smkLevel >= 1 && smkLevel <= 3) {
+            this.version = version;
+        } else {
+            this.version = "Не требуется";
+        }
+    }
+
+    // Геттеры
+    public String getId() { return id; }
+    public String getTitle() { return title; }
+    public String getDate() { return date; }
+    public String getStatus() { return status; }
+    public int getSmkLevel() { return smkLevel; }
+    public String getOrigin() { return origin; }
+    public String getVersion() { return version; }
+    public String getStorageOriginal() { return storageOriginal; }
+    public String getStorageCopies() { return storageCopies; }
+    public int getCopyCount() { return copyCount; }
+    public String getActualizationDate() { return actualizationDate; }
+
+    // Сеттеры
+    public void setId(String id) { this.id = id; }
+    public void setTitle(String title) { this.title = title; }
+    public void setDate(String date) { this.date = date; }
+    public void setStatus(String status) { this.status = status; }
+    public void setOrigin(String origin) { this.origin = origin; }
+    public void setStorageOriginal(String storageOriginal) { this.storageOriginal = storageOriginal; }
+    public void setStorageCopies(String storageCopies) { this.storageCopies = storageCopies; }
+    public void setCopyCount(int copyCount) { this.copyCount = copyCount; }
+    public void setActualizationDate(String actualizationDate) { this.actualizationDate = actualizationDate; }
+
+    public void setSmkLevel(int smkLevel) {
+        this.smkLevel = smkLevel;
+        if (smkLevel > 3) this.version = "Не требуется";
+    }
+
+    public void setVersion(String version) {
+        if (this.smkLevel >= 1 && this.smkLevel <= 3) this.version = version;
+        else this.version = "Не требуется";
+    }
+
+    public String getSmkLevelDescription() {
+        switch (smkLevel) {
+            case 1: return "1 уровень (РК и Политика)";
+            case 2: return "2 уровень (Процедуры, СОП)";
+            case 3: return "3 уровень (Внутренние акты, графики)";
+            case 4: return "4 уровень (Внешние ГОСТы, законы)";
+            case 5: return "5 уровень (Свидетельства, записи)";
+            default: return "Неизвестный уровень";
+        }
+    }
+
+    /**
+     * Формирует подробный отчет об изменениях между текущей и новой версией документа
+     */
+    public String getDiff(Document newDoc) {
+        if (newDoc == null) return "Новые данные отсутствуют";
+
+        List<String> changes = new ArrayList<>();
+
+        if (!Objects.equals(this.id, newDoc.getId())) {
+            changes.add("ID: '" + this.id + "' -> '" + newDoc.getId() + "'");
+        }
+        if (!Objects.equals(this.title, newDoc.getTitle())) {
+            changes.add("Название: '" + this.title + "' -> '" + newDoc.getTitle() + "'");
+        }
+        if (this.smkLevel != newDoc.getSmkLevel()) {
+            changes.add("Уровень: " + this.smkLevel + " -> " + newDoc.getSmkLevel());
+        }
+        if (!Objects.equals(this.version, newDoc.getVersion())) {
+            changes.add("Версия: '" + this.version + "' -> '" + newDoc.getVersion() + "'");
+        }
+        if (!Objects.equals(this.origin, newDoc.getOrigin())) {
+            changes.add("Происхождение: '" + this.origin + "' -> '" + newDoc.getOrigin() + "'");
+        }
+        if (!Objects.equals(this.date, newDoc.getDate())) {
+            changes.add("Дата рег.: '" + this.date + "' -> '" + newDoc.getDate() + "'");
+        }
+        if (!Objects.equals(this.actualizationDate, newDoc.getActualizationDate())) {
+            changes.add("Дата актуал.: '" + this.actualizationDate + "' -> '" + newDoc.getActualizationDate() + "'");
+        }
+        if (!Objects.equals(this.storageOriginal, newDoc.getStorageOriginal())) {
+            changes.add("Хранение оригинала: '" + this.storageOriginal + "' -> '" + newDoc.getStorageOriginal() + "'");
+        }
+        if (!Objects.equals(this.storageCopies, newDoc.getStorageCopies())) {
+            changes.add("Хранение копий: '" + this.storageCopies + "' -> '" + newDoc.getStorageCopies() + "'");
+        }
+        if (this.copyCount != newDoc.getCopyCount()) {
+            changes.add("Кол-во копий: " + this.copyCount + " -> " + newDoc.getCopyCount());
+        }
+        if (!Objects.equals(this.status, newDoc.getStatus())) {
+            changes.add("Статус: '" + this.status + "' -> '" + newDoc.getStatus() + "'");
+        }
+
+        return changes.isEmpty() ? "Изменений нет" : String.join("; ", changes);
+    }
+}
