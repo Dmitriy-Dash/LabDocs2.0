@@ -1,3 +1,8 @@
+import javax.swing.JFileChooser;
+import javax.swing.JOptionPane;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import javax.swing.*;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
@@ -34,7 +39,7 @@ public class MainWindow extends JFrame {
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
 
-        // Панель для кнопок действий (верхняя строчка)
+// Панель для основных действий (верхняя строчка)
         JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
 
         JButton addButton = new JButton("Добавить документ");
@@ -60,13 +65,17 @@ public class MainWindow extends JFrame {
         buttonsPanel.add(passwordButton);
         buttonsPanel.add(btnValidation);
 
-        // Панель для поиска (нижняя строчка)
+// Панель для бэкапа и поиска (нижняя строчка)
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+
+        JButton btnRestore = new JButton("Восстановить из бэкапа");
         JLabel searchLabel = new JLabel("Быстрый поиск:");
         searchField = new JTextField(25);
 
-        searchPanel.add(searchLabel);
-        searchPanel.add(searchField);
+// Порядок добавления определяет порядок отображения слева направо:
+        searchPanel.add(btnRestore);   // 1. Кнопка восстановления
+        searchPanel.add(searchLabel);  // 2. Метка "Быстрый поиск:"
+        searchPanel.add(searchField);  // 3. Поле ввода
 
         topPanel.add(buttonsPanel);
         topPanel.add(searchPanel);
@@ -145,13 +154,54 @@ public class MainWindow extends JFrame {
             }
         });
 
+        btnRestore.addActionListener(e -> {
+            if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                return;
+            }
+
+            JFileChooser fileChooser = new JFileChooser(new File("backups"));
+            fileChooser.setDialogTitle("Выберите файл резервной копии");
+            int result = fileChooser.showOpenDialog(this);
+
+            if (result == JFileChooser.APPROVE_OPTION) {
+                File selectedBackup = fileChooser.getSelectedFile();
+                try {
+                    // 1. Копируем бэкап с заменой основного файла
+                    Files.copy(
+                            selectedBackup.toPath(),
+                            new File("smk_documents.dat").toPath(),
+                            StandardCopyOption.REPLACE_EXISTING
+                    );
+
+                    // 2. Очищаем текущие данные из памяти и таблиц Swing
+                    documentList.clear();
+                    for (javax.swing.table.DefaultTableModel model : tableModels) {
+                        model.setRowCount(0);
+                    }
+
+                    // 3. Мгновенно загружаем восстановленные данные в UI
+                    loadDataFromFile();
+                    updateStatus(tabbedPane.getSelectedIndex() + 1);
+
+                    JOptionPane.showMessageDialog(this,
+                            "База успешно восстановлена и данные обновлены!",
+                            "Восстановление", JOptionPane.INFORMATION_MESSAGE);
+
+                } catch (Exception ex) {
+                    JOptionPane.showMessageDialog(this,
+                            "Ошибка восстановления: " + ex.getMessage(),
+                            "Ошибка", JOptionPane.ERROR_MESSAGE);
+                }
+            }
+        });
+
         passwordButton.addActionListener(e -> PasswordProtectionManager.changePassword(MainWindow.this));
 
         // --- ЗАГРУЗКА ИЗ ФАЙЛА ИЛИ ИНИЦИАЛИЗАЦИЯ ---
         loadDataFromFile();
         updateStatus(1);
 
-        // Автосохранение данных при закрытии программы
+        // Автосохранение и бэкап при выходе
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
