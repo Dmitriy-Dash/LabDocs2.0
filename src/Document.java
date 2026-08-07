@@ -1,8 +1,10 @@
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.io.Serializable;
 
-public class Document {
+public class Document implements Serializable {
+    private static final long serialVersionUID = 1L;
     private String id;
     private String title;
     private String date;
@@ -126,3 +128,4 @@ public class Document {
         return changes.isEmpty() ? "Изменений нет" : String.join("; ", changes);
     }
 }
+

@@ -5,6 +5,8 @@ import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -29,29 +31,45 @@ public class MainWindow extends JFrame {
         setLocationRelativeTo(null);
 
         // --- ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ И ПОИСКОМ ---
-        JPanel topPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 10));
+        JPanel topPanel = new JPanel();
+        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+
+        // Панель для кнопок действий (верхняя строчка)
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
 
         JButton addButton = new JButton("Добавить документ");
         JButton editButton = new JButton("Изменить выбранный");
         JButton deleteButton = new JButton("Удалить выбранный");
-        JButton btnSave = new JButton("Сохранить данные"); // Перенесли ближе к кнопкам действия
+        JButton btnSave = new JButton("Сохранить в Excel");
         JButton auditButton = new JButton("Журнал аудита");
         JButton passwordButton = new JButton("Сменить пароль");
+        JButton btnValidation = new JButton("Валидация ПО (ГОСТ 17025)");
 
+        btnValidation.addActionListener(e -> {
+            SwingUtilities.invokeLater(() -> {
+                validation.SystemValidationApp validationFrame = new validation.SystemValidationApp();
+                validationFrame.setVisible(true);
+            });
+        });
+
+        buttonsPanel.add(addButton);
+        buttonsPanel.add(editButton);
+        buttonsPanel.add(deleteButton);
+        buttonsPanel.add(btnSave);
+        buttonsPanel.add(auditButton);
+        buttonsPanel.add(passwordButton);
+        buttonsPanel.add(btnValidation);
+
+        // Панель для поиска (нижняя строчка)
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         JLabel searchLabel = new JLabel("Быстрый поиск:");
-        searchField = new JTextField(15); // Немного уменьшили ширину с 20 до 15, чтобы всё свободно влазило
+        searchField = new JTextField(25);
 
-// 1. Сначала добавляем все кнопки управления
-        topPanel.add(addButton);
-        topPanel.add(editButton);
-        topPanel.add(deleteButton);
-        topPanel.add(btnSave); // Теперь сохранение идет рядом с кнопками управления
-        topPanel.add(auditButton);
-        topPanel.add(passwordButton);
+        searchPanel.add(searchLabel);
+        searchPanel.add(searchField);
 
-// 2. В самом конце добавляем подпись и текстовое поле поиска
-        topPanel.add(searchLabel);
-        topPanel.add(searchField);
+        topPanel.add(buttonsPanel);
+        topPanel.add(searchPanel);
 
         // --- ВКЛАДКИ С ТАБЛИЦАМИ ---
         tabbedPane = new JTabbedPane();
@@ -64,13 +82,11 @@ public class MainWindow extends JFrame {
                 "Состав уровня: Документы внешнего происхождения, содержащие свидетельства выполнения требований"
         };
 
-        // Единственный корректный цикл создания 5 вкладок с таблицами
         for (int i = 0; i < 5; i++) {
             tableModels[i] = DocumentTableManager.createTableModel();
             tableSorters[i] = new TableRowSorter<>(tableModels[i]);
             tables[i] = DocumentTableManager.createTable(tableModels[i], tableSorters[i]);
 
-            // ПРИМЕНЯЕМ ПОДКРАШИВАНИЕ СТРОК ДЛЯ ВСЕХ КОЛОНОК ТАБЛИЦЫ
             applyRowColoring(tables[i]);
 
             tables[i].addMouseListener(new MouseAdapter() {
@@ -93,7 +109,6 @@ public class MainWindow extends JFrame {
             tabbedPane.addTab(tabShortTitles[i], tabContentPanel);
         }
 
-        // Менеджер поиска
         filterManager = new DocumentFilterManager(searchField, tableSorters, tabbedPane);
 
         tabbedPane.addChangeListener(e -> {
@@ -119,7 +134,7 @@ public class MainWindow extends JFrame {
         addButton.addActionListener(e -> onAddDocumentButtonClicked());
         editButton.addActionListener(e -> openEditDialog());
         deleteButton.addActionListener(e -> deleteSelectedDocument());
-        btnSave.addActionListener(e -> exportCurrentTabToExcel()); // Назначение действия
+        btnSave.addActionListener(e -> exportCurrentTabToExcel());
 
         auditButton.addActionListener(e -> {
             if (PasswordProtectionManager.requestAdminAccess(this)) {
@@ -132,8 +147,17 @@ public class MainWindow extends JFrame {
 
         passwordButton.addActionListener(e -> PasswordProtectionManager.changePassword(MainWindow.this));
 
-        addTestValues();
+        // --- ЗАГРУЗКА ИЗ ФАЙЛА ИЛИ ИНИЦИАЛИЗАЦИЯ ---
+        loadDataFromFile();
         updateStatus(1);
+
+        // Автосохранение данных при закрытии программы
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                DataManager.saveDocuments(documentList);
+            }
+        });
 
         SwingUtilities.invokeLater(() -> {
             for (int i = 0; i < 5; i++) {
@@ -143,8 +167,19 @@ public class MainWindow extends JFrame {
     }
 
     /**
-     * Экспорт данных из открытой вкладки в файл Excel
+     * Загрузка сохраненных документов из файла на диске
      */
+    private void loadDataFromFile() {
+        List<Document> savedDocs = DataManager.loadDocuments();
+        if (savedDocs.isEmpty()) {
+            addTestValues(); // Если файл пуст/отсутствует, добавляем первичное наполнение
+        } else {
+            for (Document doc : savedDocs) {
+                addDocumentToUI(doc);
+            }
+        }
+    }
+
     private void exportCurrentTabToExcel() {
         JTable currentTable = getCurrentTable();
         int selectedIndex = tabbedPane.getSelectedIndex();
@@ -177,7 +212,18 @@ public class MainWindow extends JFrame {
         }
     }
 
+    /**
+     * Добавление документа с автосохранением в файл
+     */
     public void addDocument(Document doc) {
+        addDocumentToUI(doc);
+        DataManager.saveDocuments(documentList); // Сохраняем изменение на диск
+    }
+
+    /**
+     * Вспомогательный метод для вставки документа в таблицу Swing
+     */
+    private void addDocumentToUI(Document doc) {
         documentList.add(doc);
         int tabIndex = doc.getSmkLevel() - 1;
         if (tabIndex >= 0 && tabIndex < 5) {
@@ -187,7 +233,6 @@ public class MainWindow extends JFrame {
                     doc.getStorageCopies(), doc.getCopyCount(), doc.getStatus()
             });
 
-            // Пересчитываем высоту после добавления HTML-разметки
             SwingUtilities.invokeLater(() -> DocumentTableManager.updateRowHeights(tables[tabIndex]));
         }
     }
@@ -231,6 +276,8 @@ public class MainWindow extends JFrame {
         if (choice == JOptionPane.YES_OPTION) {
             documentList.removeIf(doc -> doc.getId().equals(docId));
             currentModel.removeRow(modelRow);
+
+            DataManager.saveDocuments(documentList); // Сохраняем на диск после удаления
 
             AuditLogger.getInstance().log(
                     "Администратор",
@@ -305,7 +352,6 @@ public class MainWindow extends JFrame {
                     tabbedPane.setSelectedIndex(newTabIndex);
                     DocumentTableManager.updateRowHeights(tables[newTabIndex]);
 
-                    // Принудительное обновление новой таблицы
                     tableModels[newTabIndex].fireTableDataChanged();
                     tables[newTabIndex].repaint();
                 } else {
@@ -320,16 +366,15 @@ public class MainWindow extends JFrame {
                     currentModel.setValueAt(docToEdit.getCopyCount(), modelRow, 8);
                     currentModel.setValueAt(docToEdit.getStatus(), modelRow, 9);
 
-                    // КЛЮЧЕВОЙ МОМЕНТ: Уведомляем модель и таблицу об изменении всей строки
                     currentModel.fireTableRowsUpdated(modelRow, modelRow);
-
-                    // --- СБРАСЫВАЕМ ВЫДЕЛЕНИЕ ПОСЛЕ ЗАКРЫТИЯ ДИАЛОГА ---
                     currentTable.clearSelection();
 
                     DocumentTableManager.updateRowHeights(currentTable);
                     currentTable.revalidate();
                     currentTable.repaint();
                 }
+
+                DataManager.saveDocuments(documentList); // Сохраняем на диск после редактирования
 
                 AuditLogger.getInstance().log(
                         "Оператор",
@@ -375,9 +420,6 @@ public class MainWindow extends JFrame {
                 "12.01.2024", "Действует", 4, "Внешний", "", "Архив", "Полка №2", 1, "15.03.2026"));
     }
 
-    /**
-     * Получение таблицы из текущей выбранной вкладки
-     */
     private JTable getCurrentTable() {
         int selectedIndex = tabbedPane.getSelectedIndex();
         if (selectedIndex != -1 && tables != null && selectedIndex < tables.length) {
@@ -390,11 +432,7 @@ public class MainWindow extends JFrame {
         SwingUtilities.invokeLater(() -> new MainWindow().setVisible(true));
     }
 
-    /**
-     * Назначает подкрашивание строк по полю статуса
-     */
     private void applyRowColoring(JTable table) {
-        // Находим колонку по названию, а не по фиксированному номеру
         StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус");
 
         table.setDefaultRenderer(Object.class, renderer);
