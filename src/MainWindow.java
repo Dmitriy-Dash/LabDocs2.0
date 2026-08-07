@@ -14,6 +14,9 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.util.ArrayList;
 import java.util.List;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 
 public class MainWindow extends JFrame {
     private List<Document> documentList = new ArrayList<>();
@@ -28,6 +31,9 @@ public class MainWindow extends JFrame {
     private JLabel statusLabelRight;
     private JTextField searchField;
     private DocumentFilterManager filterManager;
+    private JLabel warningCounterLabel;
+    private JPanel warningDashboardPanel;
+    private JLabel warningTitleLabel;
 
     public MainWindow() {
         setTitle("Учет документов СМК Испытательной Лаборатории (x86/x64)");
@@ -39,7 +45,7 @@ public class MainWindow extends JFrame {
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
 
-// Панель для основных действий (верхняя строчка)
+        // Панель для основных действий (верхняя строчка)
         JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
 
         JButton addButton = new JButton("Добавить документ");
@@ -65,20 +71,44 @@ public class MainWindow extends JFrame {
         buttonsPanel.add(passwordButton);
         buttonsPanel.add(btnValidation);
 
-// Панель для бэкапа и поиска (нижняя строчка)
+        // Панель для бэкапа и поиска (нижняя строчка)
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
 
         JButton btnRestore = new JButton("Восстановить из бэкапа");
         JLabel searchLabel = new JLabel("Быстрый поиск:");
         searchField = new JTextField(25);
 
-// Порядок добавления определяет порядок отображения слева направо:
-        searchPanel.add(btnRestore);   // 1. Кнопка восстановления
-        searchPanel.add(searchLabel);  // 2. Метка "Быстрый поиск:"
-        searchPanel.add(searchField);  // 3. Поле ввода
+        // Порядок добавления: сначала кнопка восстановления, затем поиск
+        searchPanel.add(btnRestore);
+        searchPanel.add(searchLabel);
+        searchPanel.add(searchField);
 
         topPanel.add(buttonsPanel);
         topPanel.add(searchPanel);
+        // --- ВИДЖЕТ ПРЕДУПРЕЖДЕНИЙ (ДАШБОРД) ---
+        warningDashboardPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        warningDashboardPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(0, 5, 5, 5),
+                BorderFactory.createLineBorder(new Color(220, 180, 100), 1, true)
+        ));
+        warningDashboardPanel.setBackground(new Color(255, 255, 220)); // Светло-желтый оттенок для привлечения внимания
+        warningTitleLabel = new JLabel("⚠️ Требуют актуализации в текущем месяце (Уровень 1):");
+        warningCounterLabel = new JLabel("0");
+        warningCounterLabel.setFont(new Font("Arial", Font.BOLD, 12));
+        warningCounterLabel.setForeground(new Color(180, 0, 0));
+
+        JButton filterWarningButton = new JButton("Показать");
+        filterWarningButton.setMargin(new Insets(2, 8, 2, 8));
+
+// Клик по кнопке или счетчику для быстрой фильтрации
+        filterWarningButton.addActionListener(e -> filterDocumentsNeedingActualizationThisMonth());
+
+        warningDashboardPanel.add(warningTitleLabel);
+        warningDashboardPanel.add(warningCounterLabel);
+        warningDashboardPanel.add(filterWarningButton);
+
+// Добавляем виджет на верхнюю панель (например, под панель кнопок)
+        topPanel.add(warningDashboardPanel);
 
         // --- ВКЛАДКИ С ТАБЛИЦАМИ ---
         tabbedPane = new JTabbedPane();
@@ -122,7 +152,9 @@ public class MainWindow extends JFrame {
 
         tabbedPane.addChangeListener(e -> {
             filterManager.applyFilter();
-            updateStatus(tabbedPane.getSelectedIndex() + 1);
+            int selectedTab = tabbedPane.getSelectedIndex();
+            updateStatus(selectedTab + 1);
+            updateWarningDashboardCount(); // <--- Обновляем счетчик при смене вкладки
         });
 
         // --- НИЖНЯЯ ПАНЕЛЬ СТАТУСА ---
@@ -166,20 +198,17 @@ public class MainWindow extends JFrame {
             if (result == JFileChooser.APPROVE_OPTION) {
                 File selectedBackup = fileChooser.getSelectedFile();
                 try {
-                    // 1. Копируем бэкап с заменой основного файла
                     Files.copy(
                             selectedBackup.toPath(),
                             new File("smk_documents.dat").toPath(),
                             StandardCopyOption.REPLACE_EXISTING
                     );
 
-                    // 2. Очищаем текущие данные из памяти и таблиц Swing
                     documentList.clear();
-                    for (javax.swing.table.DefaultTableModel model : tableModels) {
+                    for (DefaultTableModel model : tableModels) {
                         model.setRowCount(0);
                     }
 
-                    // 3. Мгновенно загружаем восстановленные данные в UI
                     loadDataFromFile();
                     updateStatus(tabbedPane.getSelectedIndex() + 1);
 
@@ -216,20 +245,63 @@ public class MainWindow extends JFrame {
         });
     }
 
-    /**
-     * Загрузка сохраненных документов из файла на диске
-     */
     private void loadDataFromFile() {
         List<Document> savedDocs = DataManager.loadDocuments();
         if (savedDocs.isEmpty()) {
-            addTestValues(); // Если файл пуст/отсутствует, добавляем первичное наполнение
+            addTestValues();
         } else {
             for (Document doc : savedDocs) {
                 addDocumentToUI(doc);
             }
         }
+        // ОБЯЗАТЕЛЬНО обновляем счетчик дашборда после загрузки всех данных
+        updateWarningDashboardCount();
     }
 
+    private void updateWarningDashboardCount() {
+        int currentTabIndex = tabbedPane.getSelectedIndex();
+        int currentLevel = currentTabIndex + 1; // Уровни от 1 до 5
+
+        // Обновляем текст заголовка виджета, показывая текущий уровень
+        if (warningTitleLabel != null) {
+            warningTitleLabel.setText("⚠️ Требуют актуализации в текущем месяце (Уровень " + currentLevel + "):");
+        }
+
+        int currentMonth = LocalDate.now().getMonthValue();
+        int currentYear = LocalDate.now().getYear();
+        int count = 0;
+
+        for (Document doc : documentList) {
+            // Считаем только для документов текущего уровня вкладки
+            if (doc.getSmkLevel() != currentLevel) {
+                continue;
+            }
+
+            String actDateStr = doc.getActualizationDate();
+            if (actDateStr == null || "Не требуется".equalsIgnoreCase(actDateStr.trim())) {
+                continue;
+            }
+
+            try {
+                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+                LocalDate actDate = LocalDate.parse(actDateStr.trim(), formatter);
+                LocalDate nextActDate = actDate.plusDays(365);
+
+                // Проверяем, попадает ли дата следующей актуализации на текущий месяц/год или уже прошла
+                if ((nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth) || nextActDate.isBefore(LocalDate.now())) {
+                    count++;
+                }
+            } catch (Exception ignored) {
+            }
+        }
+
+        if (warningCounterLabel != null) {
+            warningCounterLabel.setText(String.valueOf(count));
+        }
+        if (warningDashboardPanel != null) {
+            warningDashboardPanel.setVisible(true);
+        }
+    }
     private void exportCurrentTabToExcel() {
         JTable currentTable = getCurrentTable();
         int selectedIndex = tabbedPane.getSelectedIndex();
@@ -262,17 +334,11 @@ public class MainWindow extends JFrame {
         }
     }
 
-    /**
-     * Добавление документа с автосохранением в файл
-     */
     public void addDocument(Document doc) {
         addDocumentToUI(doc);
-        DataManager.saveDocuments(documentList); // Сохраняем изменение на диск
+        DataManager.saveDocuments(documentList);
     }
 
-    /**
-     * Вспомогательный метод для вставки документа в таблицу Swing
-     */
     private void addDocumentToUI(Document doc) {
         documentList.add(doc);
         int tabIndex = doc.getSmkLevel() - 1;
@@ -285,6 +351,61 @@ public class MainWindow extends JFrame {
 
             SwingUtilities.invokeLater(() -> DocumentTableManager.updateRowHeights(tables[tabIndex]));
         }
+        // Обновляем счетчик при добавлении
+        updateWarningDashboardCount();
+    }
+
+    private void filterDocumentsNeedingActualizationThisMonth() {
+        int currentTabIndex = tabbedPane.getSelectedIndex();
+        TableRowSorter<DefaultTableModel> sorter = tableSorters[currentTabIndex];
+
+        int currentMonth = LocalDate.now().getMonthValue();
+        int currentYear = LocalDate.now().getYear();
+
+        // Создаем кастомный фильтр для TableRowSorter текущей таблицы
+        sorter.setRowFilter(new RowFilter<DefaultTableModel, Integer>() {
+            @Override
+            public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> entry) {
+                int modelRow = entry.getIdentifier();
+                Object idValue = entry.getModel().getValueAt(modelRow, 0); // ID документа
+                if (idValue == null) return false;
+
+                String targetId = idValue.toString().trim();
+                Document doc = null;
+                for (Document d : documentList) {
+                    if (d != null && targetId.equals(d.getId())) {
+                        doc = d;
+                        break;
+                    }
+                }
+
+                if (doc == null) return false;
+
+                String actDateStr = doc.getActualizationDate();
+                if (actDateStr == null || "Не требуется".equalsIgnoreCase(actDateStr.trim())) {
+                    return false;
+                }
+
+                try {
+                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+                    LocalDate actDate = LocalDate.parse(actDateStr.trim(), formatter);
+                    LocalDate nextActDate = actDate.plusDays(365);
+
+                    // Оставляем только те, у которых срок в этом месяце или просрочен
+                    boolean isThisMonth = (nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth);
+                    boolean isExpired = nextActDate.isBefore(LocalDate.now());
+
+                    return isThisMonth || isExpired;
+                } catch (Exception e) {
+                    return false;
+                }
+            }
+        });
+
+        JOptionPane.showMessageDialog(this,
+                "В таблице применен фильтр: показаны документы, требующие актуализации в текущем месяце.",
+                "Фильтр виджета",
+                JOptionPane.INFORMATION_MESSAGE);
     }
 
     public int getDocumentCountByLevel(int level) {
@@ -327,7 +448,9 @@ public class MainWindow extends JFrame {
             documentList.removeIf(doc -> doc.getId().equals(docId));
             currentModel.removeRow(modelRow);
 
-            DataManager.saveDocuments(documentList); // Сохраняем на диск после удаления
+            DataManager.saveDocuments(documentList);
+            // Обновляем счетчик при добавлении
+            updateWarningDashboardCount();
 
             AuditLogger.getInstance().log(
                     "Администратор",
@@ -424,7 +547,9 @@ public class MainWindow extends JFrame {
                     currentTable.repaint();
                 }
 
-                DataManager.saveDocuments(documentList); // Сохраняем на диск после редактирования
+                DataManager.saveDocuments(documentList);
+                // Обновляем счетчик при добавлении
+                updateWarningDashboardCount();
 
                 AuditLogger.getInstance().log(
                         "Оператор",
@@ -436,6 +561,7 @@ public class MainWindow extends JFrame {
                 updateStatus(tabbedPane.getSelectedIndex() + 1);
             }
         }
+
     }
 
     private void updateStatus(int level) {
@@ -483,7 +609,8 @@ public class MainWindow extends JFrame {
     }
 
     private void applyRowColoring(JTable table) {
-        StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус");
+        // Передаем в конструктор имя колонки статуса и общий список документов для Warning System
+        StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус", documentList);
 
         table.setDefaultRenderer(Object.class, renderer);
         for (int i = 0; i < table.getColumnCount(); i++) {

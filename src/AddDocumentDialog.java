@@ -25,6 +25,8 @@ public class AddDocumentDialog extends JDialog {
 
     private DatePickerPanel datePicker;
     private DatePickerPanel actualizationDatePicker;
+    private JCheckBox actualizationCheckBox; // Чекбокс для контроля актуализации
+
     private Document docToEdit;
 
     /**
@@ -62,7 +64,7 @@ public class AddDocumentDialog extends JDialog {
     }
 
     private void initUI() {
-        setSize(580, 650);
+        setSize(580, 680);
         setLocationRelativeTo(getParent());
         setResizable(false);
 
@@ -77,6 +79,9 @@ public class AddDocumentDialog extends JDialog {
         idField = new JTextField();
         datePicker = new DatePickerPanel();
         actualizationDatePicker = new DatePickerPanel();
+
+        // Чекбокс "Требуется ли актуализация?"
+        actualizationCheckBox = new JCheckBox("Требуется ли актуализация?", true);
 
         versionField = new JTextField();
         titleArea = createTextArea();
@@ -101,6 +106,9 @@ public class AddDocumentDialog extends JDialog {
             smkLevelCombo.setEnabled(false);
             smkLevelCombo.setToolTipText("Двойной клик для изменения (требуется пароль)");
         }
+
+        // --- ЛОГИКА ПЕРЕКЛЮЧЕНИЯ ЧЕКБОКСА АКТУАЛИЗАЦИИ ---
+        actualizationCheckBox.addActionListener(e -> updateActualizationState());
 
         // --- ДВОЙНОЙ КЛИК ПО ПОЛЮ ID / ШИФР ---
         idField.addMouseListener(new MouseAdapter() {
@@ -137,7 +145,6 @@ public class AddDocumentDialog extends JDialog {
             int selectedLevel = (int) smkLevelCombo.getSelectedItem();
 
             if (!isEditMode && mainWin != null) {
-                // Генерирует шифр формата "УР_1-1", "УР_1-2" без дублирования
                 String generatedId = DocumentCodeGenerator.generateNextMaxCode(selectedLevel, mainWin.getDocumentList());
                 idField.setText(generatedId);
             }
@@ -183,6 +190,11 @@ public class AddDocumentDialog extends JDialog {
         formPanel.add(new JLabel("Дата регистрации:"), gbc);
         gbc.gridx = 1; gbc.gridy = row++; gbc.weightx = 0.7;
         formPanel.add(datePicker, gbc);
+
+        // Флаг потребности в актуализации
+        gbc.gridx = 0; gbc.gridy = row; gbc.gridwidth = 2; gbc.weightx = 1.0;
+        formPanel.add(actualizationCheckBox, gbc);
+        gbc.gridwidth = 1; row++;
 
         // Дата актуализации
         gbc.gridx = 0; gbc.gridy = row; gbc.weightx = 0.3;
@@ -231,6 +243,24 @@ public class AddDocumentDialog extends JDialog {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
+    /**
+     * Обновление доступности и текста поля даты актуализации при клике на галочку
+     */
+    private void updateActualizationState() {
+        boolean isRequired = actualizationCheckBox.isSelected();
+        if (isRequired) {
+            actualizationDatePicker.getTextField().setEnabled(true);
+            actualizationDatePicker.getTextField().setBackground(Color.WHITE);
+            if ("Не требуется".equalsIgnoreCase(actualizationDatePicker.getText().trim())) {
+                actualizationDatePicker.setText("");
+            }
+        } else {
+            actualizationDatePicker.setText("Не требуется");
+            actualizationDatePicker.getTextField().setEnabled(false);
+            actualizationDatePicker.getTextField().setBackground(new Color(240, 240, 240));
+        }
+    }
+
     private void populateFieldsForEditing(Document doc) {
         idField.setText(doc.getId());
         smkLevelCombo.setSelectedItem(doc.getSmkLevel());
@@ -239,7 +269,20 @@ public class AddDocumentDialog extends JDialog {
         originCombo.setSelectedItem(doc.getOrigin());
 
         datePicker.setText(doc.getDate());
-        actualizationDatePicker.setText(doc.getActualizationDate());
+
+        // Настройка состояния актуализации на основе сохраненных данных
+        String actDate = doc.getActualizationDate();
+        if (actDate == null || actDate.trim().isEmpty() || "Не требуется".equalsIgnoreCase(actDate.trim())) {
+            actualizationCheckBox.setSelected(false);
+            actualizationDatePicker.setText("Не требуется");
+            actualizationDatePicker.getTextField().setEnabled(false);
+            actualizationDatePicker.getTextField().setBackground(new Color(240, 240, 240));
+        } else {
+            actualizationCheckBox.setSelected(true);
+            actualizationDatePicker.setText(actDate);
+            actualizationDatePicker.getTextField().setEnabled(true);
+            actualizationDatePicker.getTextField().setBackground(Color.WHITE);
+        }
 
         storageOriginalArea.setText(doc.getStorageOriginal());
         storageCopiesArea.setText(doc.getStorageCopies());
@@ -253,7 +296,7 @@ public class AddDocumentDialog extends JDialog {
     private void onSave() {
         String title = titleArea.getText().trim();
         String regDate = datePicker.getText().trim();
-        String actDate = actualizationDatePicker.getText().trim();
+        String actDate;
         String storageOriginal = storageOriginalArea.getText().trim();
         String storageCopies = storageCopiesArea.getText().trim();
         int copyCount = (int) copyCountSpinner.getValue();
@@ -289,9 +332,12 @@ public class AddDocumentDialog extends JDialog {
             return;
         }
 
-        if (selectedLevel >= 4) {
-            if (actDate.isEmpty()) {
-                JOptionPane.showMessageDialog(this, "Для документов " + selectedLevel + "-го уровня дата актуализации обязательна!", "Предупреждение", JOptionPane.WARNING_MESSAGE);
+        // Проверка и обработка даты актуализации
+        if (actualizationCheckBox.isSelected()) {
+            actDate = actualizationDatePicker.getText().trim();
+
+            if (actDate.isEmpty() || "Не требуется".equalsIgnoreCase(actDate)) {
+                JOptionPane.showMessageDialog(this, "Укажите дату актуализации!", "Предупреждение", JOptionPane.WARNING_MESSAGE);
                 actualizationDatePicker.getTextField().requestFocus();
                 return;
             }
@@ -316,6 +362,8 @@ public class AddDocumentDialog extends JDialog {
                     return;
                 }
             } catch (Exception ignored) {}
+        } else {
+            actDate = "Не требуется";
         }
 
         if (storageOriginal.isEmpty()) {
@@ -341,7 +389,7 @@ public class AddDocumentDialog extends JDialog {
                 storageOriginal,
                 storageCopies,
                 copyCount,
-                actualizationDatePicker.getText()
+                actDate
         );
         confirmed = true;
         dispose();
@@ -358,14 +406,11 @@ public class AddDocumentDialog extends JDialog {
             versionField.setEnabled(true);
         }
 
+        // Автоматически настраиваем галочку при переключении уровня
         if (selectedLevel >= 4) {
-            actualizationDatePicker.getTextField().setEnabled(true);
-            actualizationDatePicker.getTextField().setBackground(Color.WHITE);
-        } else {
-            actualizationDatePicker.setText("");
-            actualizationDatePicker.getTextField().setEnabled(false);
-            actualizationDatePicker.getTextField().setBackground(new Color(240, 240, 240));
+            actualizationCheckBox.setSelected(true);
         }
+        updateActualizationState();
     }
 
     private JTextArea createTextArea() {

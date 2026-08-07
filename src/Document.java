@@ -1,10 +1,14 @@
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.io.Serializable;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 
 public class Document implements Serializable {
     private static final long serialVersionUID = 1L;
+
     private String id;
     private String title;
     private String date;
@@ -29,12 +33,19 @@ public class Document implements Serializable {
         this.storageOriginal = storageOriginal;
         this.storageCopies = storageCopies;
         this.copyCount = copyCount;
-        this.actualizationDate = actualizationDate;
 
+        // Контроль логики версии по уровню СМК
         if (smkLevel >= 1 && smkLevel <= 3) {
             this.version = version;
         } else {
             this.version = "Не требуется";
+        }
+
+        // Контроль логики даты актуализации
+        if (actualizationDate != null && !actualizationDate.trim().isEmpty()) {
+            this.actualizationDate = actualizationDate;
+        } else {
+            this.actualizationDate = "Не требуется";
         }
     }
 
@@ -60,16 +71,54 @@ public class Document implements Serializable {
     public void setStorageOriginal(String storageOriginal) { this.storageOriginal = storageOriginal; }
     public void setStorageCopies(String storageCopies) { this.storageCopies = storageCopies; }
     public void setCopyCount(int copyCount) { this.copyCount = copyCount; }
-    public void setActualizationDate(String actualizationDate) { this.actualizationDate = actualizationDate; }
+
+    public String getActualizationStatus() {
+        if (actualizationDate == null || "Не требуется".equalsIgnoreCase(actualizationDate)) {
+            return "OK";
+        }
+
+        try {
+            DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+            LocalDate actDate = LocalDate.parse(actualizationDate, formatter);
+
+            // Логика: следующая актуализация = дата + 365 дней
+            LocalDate nextActDate = actDate.plusDays(365);
+            LocalDate today = LocalDate.now();
+
+            long daysUntil = ChronoUnit.DAYS.between(today, nextActDate);
+
+            if (daysUntil < 0) {
+                return "EXPIRED"; // Красный
+            } else if (daysUntil <= 30) {
+                return "WARNING"; // Желтый
+            }
+        } catch (Exception e) {
+            return "ERROR";
+        }
+        return "OK";
+    }
+
+    public void setActualizationDate(String actualizationDate) {
+        if (actualizationDate != null && !actualizationDate.trim().isEmpty()) {
+            this.actualizationDate = actualizationDate;
+        } else {
+            this.actualizationDate = "Не требуется";
+        }
+    }
 
     public void setSmkLevel(int smkLevel) {
         this.smkLevel = smkLevel;
-        if (smkLevel > 3) this.version = "Не требуется";
+        if (smkLevel > 3) {
+            this.version = "Не требуется";
+        }
     }
 
     public void setVersion(String version) {
-        if (this.smkLevel >= 1 && this.smkLevel <= 3) this.version = version;
-        else this.version = "Не требуется";
+        if (this.smkLevel >= 1 && this.smkLevel <= 3) {
+            this.version = version;
+        } else {
+            this.version = "Не требуется";
+        }
     }
 
     public String getSmkLevelDescription() {
