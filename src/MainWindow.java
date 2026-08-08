@@ -1,10 +1,4 @@
-import javax.swing.JFileChooser;
-import javax.swing.JOptionPane;
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import javax.swing.*;
-import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
 import java.awt.*;
@@ -12,11 +6,13 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.util.ArrayList;
-import java.util.List;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainWindow extends JFrame {
     private List<Document> documentList = new ArrayList<>();
@@ -44,13 +40,7 @@ public class MainWindow extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
 
-        // --- ВЕРХНЯЯ ПАНЕЛЬ С КНОПКАМИ И ПОИСКОМ ---
-        JPanel topPanel = new JPanel();
-        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
-
-        // Панель для основных действий (верхняя строчка)
-        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-
+        // Кнопки управления
         JButton addButton = new JButton("Добавить документ");
         JButton editButton = new JButton("Изменить выбранный");
         JButton deleteButton = new JButton("Удалить выбранный");
@@ -59,54 +49,33 @@ public class MainWindow extends JFrame {
         JButton passwordButton = new JButton("Сменить пароль");
         JButton btnValidation = new JButton("Валидация ПО (ГОСТ 17025)");
 
-        btnValidation.addActionListener(e -> {
-            SwingUtilities.invokeLater(() -> {
-                validation.SystemValidationApp validationFrame = new validation.SystemValidationApp();
-                validationFrame.setVisible(true);
-            });
-        });
+        // Блокируем валидацию для Лаборанта и Оператора (оставляем только для Менеджера)
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT || currentUser.getRole() == User.Role.OPERATOR) {
+            btnValidation.setEnabled(false);
+            btnValidation.setToolTipText("Доступно только Менеджеру по качеству");
+        }
 
-        buttonsPanel.add(addButton);
-        buttonsPanel.add(editButton);
-        buttonsPanel.add(deleteButton);
-        buttonsPanel.add(btnSave);
-        buttonsPanel.add(auditButton);
-        buttonsPanel.add(passwordButton);
-        buttonsPanel.add(btnValidation);
-
-        // Панель для бэкапа и поиска (нижняя строчка)
-        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-
+        btnValidation.addActionListener(e -> SwingUtilities.invokeLater(() -> {
+            validation.SystemValidationApp validationFrame = new validation.SystemValidationApp();
+            validationFrame.setVisible(true);
+        }));
         JButton btnRestore = new JButton("Восстановить из бэкапа");
-        JLabel searchLabel = new JLabel("Быстрый поиск:");
-        searchField = new JTextField(25);
 
-        searchPanel.add(btnRestore);
-        searchPanel.add(searchLabel);
-        searchPanel.add(searchField);
+        btnValidation.addActionListener(e -> SwingUtilities.invokeLater(() -> {
+            validation.SystemValidationApp validationFrame = new validation.SystemValidationApp();
+            validationFrame.setVisible(true);
+        }));
 
-        topPanel.add(buttonsPanel);
-        topPanel.add(searchPanel);
-
-        // --- БЛОКИРОВКА КНОПОК ПО РОЛЯМ ---
+        // Блокировка по ролям
         if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
             addButton.setEnabled(false);
             editButton.setEnabled(false);
             deleteButton.setEnabled(false);
             btnRestore.setEnabled(false);
             auditButton.setEnabled(false);
-        } else if (currentUser.getRole() == User.Role.OPERATOR) {
-            // Оператор имеет доступ к добавлению/редактированию, но удаление идет через пароль менеджера
         }
 
-        // --- ВИДЖЕТ ПРЕДУПРЕЖДЕНИЙ (ДАШБОРД) ---
-        warningDashboardPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        warningDashboardPanel.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createEmptyBorder(0, 5, 5, 5),
-                BorderFactory.createLineBorder(new Color(220, 180, 100), 1, true)
-        ));
-        warningDashboardPanel.setBackground(new Color(255, 255, 220));
-
+        // Дашборд предупреждений
         warningTitleLabel = new JLabel("⚠️ Требуют актуализации в текущем месяце (Уровень 1):");
         warningCounterLabel = new JLabel("0");
         warningCounterLabel.setFont(new Font("Arial", Font.BOLD, 12));
@@ -116,30 +85,38 @@ public class MainWindow extends JFrame {
         filterWarningButton.setMargin(new Insets(2, 8, 2, 8));
         filterWarningButton.addActionListener(e -> filterDocumentsNeedingActualizationThisMonth());
 
-        warningDashboardPanel.add(warningTitleLabel);
-        warningDashboardPanel.add(warningCounterLabel);
-        warningDashboardPanel.add(filterWarningButton);
+        warningDashboardPanel = MainWindowBuilder.createWarningDashboard(warningTitleLabel, warningCounterLabel, filterWarningButton);
 
+        // Верхняя панель
+        JPanel topPanel = new JPanel();
+        topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
+
+        JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        buttonsPanel.add(addButton);
+        buttonsPanel.add(editButton);
+        buttonsPanel.add(deleteButton);
+        buttonsPanel.add(btnSave);
+        buttonsPanel.add(auditButton);
+        buttonsPanel.add(passwordButton);
+        buttonsPanel.add(btnValidation);
+        buttonsPanel.add(btnRestore);
+
+        searchField = new JTextField(25);
+        JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
+        searchPanel.add(new JLabel("Быстрый поиск:"));
+        searchPanel.add(searchField);
+
+        topPanel.add(buttonsPanel);
+        topPanel.add(searchPanel);
         topPanel.add(warningDashboardPanel);
 
-        // --- ВКЛАДКИ С ТАБЛИЦАМИ ---
+        // Вкладки и таблицы
         tabbedPane = new JTabbedPane();
-        String[] tabShortTitles = {"Уровень 1", "Уровень 2", "Уровень 3", "Уровень 4", "Уровень 5"};
-        String[] tabDescriptions = {
-                "Состав уровня: Документы, описывающие СМК ИЛ (Руководство по качеству, Политика в области качества)",
-                "Состав уровня: Руководящие документы, документированные процедуры, СОП, рабочие инструкции",
-                "Состав уровня: Внутренние организационно-распорядительные документы, графики, таблицы",
-                "Состав уровня: Правовые, нормативные и технические документы внешнего происхождения (ГОСТы)",
-                "Состав уровня: Документы внешнего происхождения, содержащие свидетельства выполнения требований"
-        };
+        MainWindowBuilder.initializeTabs(tabbedPane, tables, tableModels, tableSorters);
 
         for (int i = 0; i < 5; i++) {
-            tableModels[i] = DocumentTableManager.createTableModel();
-            tableSorters[i] = new TableRowSorter<>(tableModels[i]);
-            tables[i] = DocumentTableManager.createTable(tableModels[i], tableSorters[i]);
-
             applyRowColoring(tables[i]);
-
+            final int tabIdx = i;
             tables[i].addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
@@ -148,16 +125,6 @@ public class MainWindow extends JFrame {
                     }
                 }
             });
-
-            JScrollPane scrollPane = new JScrollPane(tables[i]);
-            JPanel tabContentPanel = new JPanel(new BorderLayout(5, 5));
-            JLabel descLabel = new JLabel("<html><i style='color:gray;'>" + tabDescriptions[i] + "</i></html>");
-            descLabel.setFont(new Font("Arial", Font.PLAIN, 12));
-            descLabel.setBorder(BorderFactory.createEmptyBorder(5, 10, 5, 10));
-
-            tabContentPanel.add(descLabel, BorderLayout.NORTH);
-            tabContentPanel.add(scrollPane, BorderLayout.CENTER);
-            tabbedPane.addTab(tabShortTitles[i], tabContentPanel);
         }
 
         filterManager = new DocumentFilterManager(searchField, tableSorters, tabbedPane);
@@ -169,95 +136,28 @@ public class MainWindow extends JFrame {
             updateWarningDashboardCount();
         });
 
-        // --- НИЖНЯЯ ПАНЕЛЬ СТАТУСА ---
-        JPanel bottomPanel = new JPanel(new BorderLayout());
-        bottomPanel.setBorder(BorderFactory.createEtchedBorder());
+        // Нижняя панель статуса
         statusLabelLeft = new JLabel("НА УРОВНЕ 1: Всего: 0 | Действует: 0 | В работе: 0 | В архиве: 0 | Отменен: 0");
         statusLabelRight = new JLabel("| ИТОГО В БАЗЕ СМК: 0 документов ");
-        statusLabelLeft.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5));
-        statusLabelRight.setBorder(BorderFactory.createEmptyBorder(3, 5, 3, 5));
-        bottomPanel.add(statusLabelLeft, BorderLayout.WEST);
-        bottomPanel.add(statusLabelRight, BorderLayout.EAST);
+        JPanel bottomPanel = MainWindowBuilder.createBottomPanel(statusLabelLeft, statusLabelRight);
 
         add(topPanel, BorderLayout.NORTH);
         add(tabbedPane, BorderLayout.CENTER);
         add(bottomPanel, BorderLayout.SOUTH);
 
-        // --- ОБРАБОТЧИКИ КНОПОК ---
+        // Слушатели кнопок
         addButton.addActionListener(e -> onAddDocumentButtonClicked());
         editButton.addActionListener(e -> openEditDialog());
         deleteButton.addActionListener(e -> deleteSelectedDocument());
         btnSave.addActionListener(e -> exportCurrentTabToExcel());
 
-        auditButton.addActionListener(e -> {
-            if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
-                JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            if (currentUser.getRole() == User.Role.OPERATOR) {
-                if (!PasswordProtectionManager.requestAdminAccess(this)) {
-                    JOptionPane.showMessageDialog(this, "Неверный пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
-            }
-            String logData = AuditLogger.getInstance().readEncryptedLog();
-            JTextArea textArea = new JTextArea(logData, 20, 50);
-            textArea.setEditable(false);
-            JOptionPane.showMessageDialog(this, new JScrollPane(textArea), "Зашифрованный журнал аудита", JOptionPane.INFORMATION_MESSAGE);
-        });
-
-        btnRestore.addActionListener(e -> {
-            if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
-                JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
-            if (currentUser.getRole() == User.Role.OPERATOR) {
-                if (!PasswordProtectionManager.requestAdminAccess(this)) {
-                    JOptionPane.showMessageDialog(this, "Неверный пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
-                    return;
-                }
-            }
-
-            JFileChooser fileChooser = new JFileChooser(new File("backups"));
-            fileChooser.setDialogTitle("Выберите файл резервной копии");
-            int result = fileChooser.showOpenDialog(this);
-
-            if (result == JFileChooser.APPROVE_OPTION) {
-                File selectedBackup = fileChooser.getSelectedFile();
-                try {
-                    Files.copy(
-                            selectedBackup.toPath(),
-                            new File("smk_documents.dat").toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
-                    );
-
-                    documentList.clear();
-                    for (DefaultTableModel model : tableModels) {
-                        model.setRowCount(0);
-                    }
-
-                    loadDataFromFile();
-                    updateStatus(tabbedPane.getSelectedIndex() + 1);
-
-                    JOptionPane.showMessageDialog(this,
-                            "База успешно восстановлена и данные обновлены!",
-                            "Восстановление", JOptionPane.INFORMATION_MESSAGE);
-
-                } catch (Exception ex) {
-                    JOptionPane.showMessageDialog(this,
-                            "Ошибка восстановления: " + ex.getMessage(),
-                            "Ошибка", JOptionPane.ERROR_MESSAGE);
-                }
-            }
-        });
-
+        auditButton.addActionListener(e -> handleAuditAction());
+        btnRestore.addActionListener(e -> handleRestoreAction());
         passwordButton.addActionListener(e -> PasswordProtectionManager.changePassword(MainWindow.this, currentUser));
 
-        // --- ЗАГРУЗКА ИЗ ФАЙЛА ИЛИ ИНИЦИАЛИЗАЦИЯ ---
         loadDataFromFile();
         updateStatus(1);
 
-        // Автосохранение и бэкап при выходе
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
@@ -270,6 +170,51 @@ public class MainWindow extends JFrame {
                 DocumentTableManager.updateRowHeights(tables[i]);
             }
         });
+    }
+
+    private void handleAuditAction() {
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        if (currentUser.getRole() == User.Role.OPERATOR) {
+            if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                JOptionPane.showMessageDialog(this, "Неверный пароль.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
+        String logData = AuditLogger.getInstance().readEncryptedLog();
+        JTextArea textArea = new JTextArea(logData, 20, 50);
+        textArea.setEditable(false);
+        JOptionPane.showMessageDialog(this, new JScrollPane(textArea), "Зашифрованный журнал аудита", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private void handleRestoreAction() {
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+        if (currentUser.getRole() == User.Role.OPERATOR) {
+            if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                JOptionPane.showMessageDialog(this, "Неверный пароль.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
+
+        JFileChooser fileChooser = new JFileChooser(new File("backups"));
+        fileChooser.setDialogTitle("Выберите файл резервной копии");
+        if (fileChooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            try {
+                Files.copy(fileChooser.getSelectedFile().toPath(), new File("smk_documents.dat").toPath(), StandardCopyOption.REPLACE_EXISTING);
+                documentList.clear();
+                for (DefaultTableModel model : tableModels) model.setRowCount(0);
+                loadDataFromFile();
+                updateStatus(tabbedPane.getSelectedIndex() + 1);
+                JOptionPane.showMessageDialog(this, "База успешно восстановлена!", "Восстановление", JOptionPane.INFORMATION_MESSAGE);
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "Ошибка восстановления: " + ex.getMessage(), "Ошибка", JOptionPane.ERROR_MESSAGE);
+            }
+        }
     }
 
     private void loadDataFromFile() {
@@ -297,60 +242,42 @@ public class MainWindow extends JFrame {
         int count = 0;
 
         for (Document doc : documentList) {
-            if (doc.getSmkLevel() != currentLevel) {
-                continue;
-            }
-
+            if (doc.getSmkLevel() != currentLevel) continue;
             String actDateStr = doc.getActualizationDate();
-            if (actDateStr == null || "Не требуется".equalsIgnoreCase(actDateStr.trim())) {
-                continue;
-            }
+            if (actDateStr == null || "Не требуется".equalsIgnoreCase(actDateStr.trim())) continue;
 
             try {
-                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
-                LocalDate actDate = LocalDate.parse(actDateStr.trim(), formatter);
+                LocalDate actDate = LocalDate.parse(actDateStr.trim(), DateTimeFormatter.ofPattern("dd.MM.yyyy"));
                 LocalDate nextActDate = actDate.plusDays(365);
-
                 if ((nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth) || nextActDate.isBefore(LocalDate.now())) {
                     count++;
                 }
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
 
-        if (warningCounterLabel != null) {
-            warningCounterLabel.setText(String.valueOf(count));
-        }
-        if (warningDashboardPanel != null) {
-            warningDashboardPanel.setVisible(true);
-        }
+        if (warningCounterLabel != null) warningCounterLabel.setText(String.valueOf(count));
     }
 
     private void exportCurrentTabToExcel() {
         JTable currentTable = getCurrentTable();
         int selectedIndex = tabbedPane.getSelectedIndex();
-
         if (currentTable != null && selectedIndex != -1) {
-            String tabTitle = tabbedPane.getTitleAt(selectedIndex);
-            ExcelExporter.exportTableToExcel(currentTable, tabTitle, this);
+            ExcelExporter.exportTableToExcel(currentTable, tabbedPane.getTitleAt(selectedIndex), this);
         }
     }
 
     private void onAddDocumentButtonClicked() {
         if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
-            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        int currentActiveLevel = tabbedPane.getSelectedIndex() + 1;
-
-        AddDocumentDialog dialog = new AddDocumentDialog(this, currentActiveLevel);
+        AddDocumentDialog dialog = new AddDocumentDialog(this, tabbedPane.getSelectedIndex() + 1);
         dialog.setVisible(true);
 
         Document newDoc = dialog.getCreatedDocument();
         if (newDoc != null) {
             addDocument(newDoc);
-
             tabbedPane.setSelectedIndex(newDoc.getSmkLevel() - 1);
             updateStatus(newDoc.getSmkLevel());
         }
@@ -359,12 +286,7 @@ public class MainWindow extends JFrame {
     public void addDocument(Document doc) {
         addDocumentToUI(doc);
         DataManager.saveDocuments(documentList);
-        AuditLogger.getInstance().log(
-                currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]",
-                "СОЗДАНИЕ",
-                doc.getId(),
-                "Добавлен документ: " + doc.getTitle()
-        );
+        AuditLogger.getInstance().log(currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]", "СОЗДАНИЕ", doc.getId(), "Добавлен документ: " + doc.getTitle());
     }
 
     private void addDocumentToUI(Document doc) {
@@ -376,7 +298,6 @@ public class MainWindow extends JFrame {
                     doc.getDate(), doc.getActualizationDate(), doc.getStorageOriginal(),
                     doc.getStorageCopies(), doc.getCopyCount(), doc.getStatus()
             });
-
             SwingUtilities.invokeLater(() -> DocumentTableManager.updateRowHeights(tables[tabIndex]));
         }
         updateWarningDashboardCount();
@@ -385,163 +306,97 @@ public class MainWindow extends JFrame {
     private void filterDocumentsNeedingActualizationThisMonth() {
         int currentTabIndex = tabbedPane.getSelectedIndex();
         TableRowSorter<DefaultTableModel> sorter = tableSorters[currentTabIndex];
-
         int currentMonth = LocalDate.now().getMonthValue();
         int currentYear = LocalDate.now().getYear();
 
-        sorter.setRowFilter(new RowFilter<DefaultTableModel, Integer>() {
+        sorter.setRowFilter(new RowFilter<>() {
             @Override
             public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> entry) {
                 int modelRow = entry.getIdentifier();
                 Object idValue = entry.getModel().getValueAt(modelRow, 0);
                 if (idValue == null) return false;
 
-                String targetId = idValue.toString().trim();
-                Document doc = null;
-                for (Document d : documentList) {
-                    if (d != null && targetId.equals(d.getId())) {
-                        doc = d;
-                        break;
-                    }
-                }
-
+                Document doc = documentList.stream().filter(d -> idValue.toString().trim().equals(d.getId())).findFirst().orElse(null);
                 if (doc == null) return false;
 
                 String actDateStr = doc.getActualizationDate();
-                if (actDateStr == null || "Не требуется".equalsIgnoreCase(actDateStr.trim())) {
-                    return false;
-                }
+                if (actDateStr == null || "Не требуется".equalsIgnoreCase(actDateStr.trim())) return false;
 
                 try {
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd.MM.yyyy");
-                    LocalDate actDate = LocalDate.parse(actDateStr.trim(), formatter);
-                    LocalDate nextActDate = actDate.plusDays(365);
-
-                    boolean isThisMonth = (nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth);
-                    boolean isExpired = nextActDate.isBefore(LocalDate.now());
-
-                    return isThisMonth || isExpired;
+                    LocalDate nextActDate = LocalDate.parse(actDateStr.trim(), DateTimeFormatter.ofPattern("dd.MM.yyyy")).plusDays(365);
+                    return (nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth) || nextActDate.isBefore(LocalDate.now());
                 } catch (Exception e) {
                     return false;
                 }
             }
         });
 
-        JOptionPane.showMessageDialog(this,
-                "В таблице применен фильтр: показаны документы, требующие актуализации в текущем месяце.",
-                "Фильтр виджета",
-                JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    public int getDocumentCountByLevel(int level) {
-        int count = 0;
-        for (Document doc : documentList) {
-            if (doc.getSmkLevel() == level) count++;
-        }
-        return count;
+        JOptionPane.showMessageDialog(this, "Фильтр применен: показаны документы, требующие актуализации.", "Фильтр", JOptionPane.INFORMATION_MESSAGE);
     }
 
     private void deleteSelectedDocument() {
         if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
-            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
             return;
         }
-
-        if (currentUser.getRole() == User.Role.OPERATOR) {
-            if (!PasswordProtectionManager.requestAdminAccess(this)) {
-                JOptionPane.showMessageDialog(this, "Видеть пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
-                return;
-            }
+        if (currentUser.getRole() == User.Role.OPERATOR && !PasswordProtectionManager.requestAdminAccess(this)) {
+            JOptionPane.showMessageDialog(this, "Неверный пароль.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+            return;
         }
 
         int currentTabIndex = tabbedPane.getSelectedIndex();
-        JTable currentTable = tables[currentTabIndex];
-        DefaultTableModel currentModel = tableModels[currentTabIndex];
-
-        int viewRow = currentTable.getSelectedRow();
+        int viewRow = tables[currentTabIndex].getSelectedRow();
         if (viewRow == -1) {
-            JOptionPane.showMessageDialog(this, "Пожалуйста, выберите запись для удаления!", "Удаление", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Выберите запись для удаления!", "Удаление", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        int modelRow = currentTable.convertRowIndexToModel(viewRow);
+        int modelRow = tables[currentTabIndex].convertRowIndexToModel(viewRow);
+        String docId = tableModels[currentTabIndex].getValueAt(modelRow, 0).toString();
+        String docTitle = tableModels[currentTabIndex].getValueAt(modelRow, 1).toString();
 
-        String docId = currentModel.getValueAt(modelRow, 0).toString();
-        String docTitle = currentModel.getValueAt(modelRow, 1).toString();
-
-        int choice = JOptionPane.showConfirmDialog(
-                this,
-                "Вы действительно хотите безвозвратно удалить документ?\n\nID: " + docId + "\nНазвание: " + docTitle,
-                "Подтверждение удаления",
-                JOptionPane.YES_NO_OPTION,
-                JOptionPane.WARNING_MESSAGE
-        );
-
-        if (choice == JOptionPane.YES_OPTION) {
+        if (JOptionPane.showConfirmDialog(this, "Удалить документ?\nID: " + docId, "Подтверждение", JOptionPane.YES_NO_OPTION) == JOptionPane.YES_OPTION) {
             documentList.removeIf(doc -> doc.getId().equals(docId));
-            currentModel.removeRow(modelRow);
-
+            tableModels[currentTabIndex].removeRow(modelRow);
             DataManager.saveDocuments(documentList);
             updateWarningDashboardCount();
-
-            AuditLogger.getInstance().log(
-                    currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]",
-                    "УДАЛЕНИЕ",
-                    docId,
-                    "Удален документ: " + docTitle
-            );
-
+            AuditLogger.getInstance().log(currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]", "УДАЛЕНИЕ", docId, "Удален: " + docTitle);
             updateStatus(currentTabIndex + 1);
-            JOptionPane.showMessageDialog(this, "Документ \"" + docId + "\" успешно удален.", "Удаление", JOptionPane.INFORMATION_MESSAGE);
         }
     }
 
     private void openEditDialog() {
         if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
-            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
         int currentTabIndex = tabbedPane.getSelectedIndex();
-        JTable currentTable = tables[currentTabIndex];
-        DefaultTableModel currentModel = tableModels[currentTabIndex];
-
-        int viewRow = currentTable.getSelectedRow();
+        int viewRow = tables[currentTabIndex].getSelectedRow();
         if (viewRow == -1) {
-            JOptionPane.showMessageDialog(this, "Пожалуйста, выберите строку!", "Редактирование", JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "Выберите строку для редактирования!", "Редактирование", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
-        int modelRow = currentTable.convertRowIndexToModel(viewRow);
-
-        String docId = currentModel.getValueAt(modelRow, 0).toString();
-        Document docToEdit = null;
-        for (Document doc : documentList) {
-            if (doc.getId().equals(docId)) {
-                docToEdit = doc;
-                break;
-            }
-        }
+        int modelRow = tables[currentTabIndex].convertRowIndexToModel(viewRow);
+        String docId = tableModels[currentTabIndex].getValueAt(modelRow, 0).toString();
+        Document docToEdit = documentList.stream().filter(d -> d.getId().equals(docId)).findFirst().orElse(null);
 
         if (docToEdit != null) {
             int oldLevel = docToEdit.getSmkLevel();
-            String originalDocId = docToEdit.getId();
-
             AddDocumentDialog editDialog = new AddDocumentDialog(this, docToEdit);
             editDialog.setVisible(true);
 
             Document updatedDoc = editDialog.getCreatedDocument();
             if (updatedDoc != null) {
-                if (currentUser.getRole() == User.Role.OPERATOR && (!originalDocId.equals(updatedDoc.getId()) || oldLevel != updatedDoc.getSmkLevel())) {
+                if (currentUser.getRole() == User.Role.OPERATOR && (!docToEdit.getId().equals(updatedDoc.getId()) || oldLevel != updatedDoc.getSmkLevel())) {
                     if (!PasswordProtectionManager.requestAdminAccess(this)) {
-                        JOptionPane.showMessageDialog(this, "Видеть пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                        JOptionPane.showMessageDialog(this, "Неверный пароль.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
                         return;
                     }
                 }
 
-                updatedDoc.setId(originalDocId);
                 String changeDetails = docToEdit.getDiff(updatedDoc);
-
                 docToEdit.setTitle(updatedDoc.getTitle());
                 docToEdit.setSmkLevel(updatedDoc.getSmkLevel());
                 docToEdit.setVersion(updatedDoc.getVersion());
@@ -553,53 +408,17 @@ public class MainWindow extends JFrame {
                 docToEdit.setStatus(updatedDoc.getStatus());
                 docToEdit.setCopyCount(updatedDoc.getCopyCount());
 
-                int newLevel = updatedDoc.getSmkLevel();
-
-                if (oldLevel != newLevel) {
-                    currentModel.removeRow(modelRow);
-
-                    int newTabIndex = newLevel - 1;
-                    tableModels[newTabIndex].addRow(new Object[]{
-                            docToEdit.getId(), docToEdit.getTitle(), docToEdit.getVersion(), docToEdit.getOrigin(),
-                            docToEdit.getDate(), docToEdit.getActualizationDate(), docToEdit.getStorageOriginal(),
-                            docToEdit.getStorageCopies(), docToEdit.getCopyCount(), docToEdit.getStatus()
-                    });
-
-                    tabbedPane.setSelectedIndex(newTabIndex);
-                    DocumentTableManager.updateRowHeights(tables[newTabIndex]);
-
-                    tableModels[newTabIndex].fireTableDataChanged();
-                    tables[newTabIndex].repaint();
+                if (oldLevel != updatedDoc.getSmkLevel()) {
+                    tableModels[currentTabIndex].removeRow(modelRow);
+                    addDocumentToUI(docToEdit);
+                    tabbedPane.setSelectedIndex(updatedDoc.getSmkLevel() - 1);
                 } else {
-                    currentModel.setValueAt(docToEdit.getId(), modelRow, 0);
-                    currentModel.setValueAt(docToEdit.getTitle(), modelRow, 1);
-                    currentModel.setValueAt(docToEdit.getVersion(), modelRow, 2);
-                    currentModel.setValueAt(docToEdit.getOrigin(), modelRow, 3);
-                    currentModel.setValueAt(docToEdit.getDate(), modelRow, 4);
-                    currentModel.setValueAt(docToEdit.getActualizationDate(), modelRow, 5);
-                    currentModel.setValueAt(docToEdit.getStorageOriginal(), modelRow, 6);
-                    currentModel.setValueAt(docToEdit.getStorageCopies(), modelRow, 7);
-                    currentModel.setValueAt(docToEdit.getCopyCount(), modelRow, 8);
-                    currentModel.setValueAt(docToEdit.getStatus(), modelRow, 9);
-
-                    currentModel.fireTableRowsUpdated(modelRow, modelRow);
-                    currentTable.clearSelection();
-
-                    DocumentTableManager.updateRowHeights(currentTable);
-                    currentTable.revalidate();
-                    currentTable.repaint();
+                    tableModels[currentTabIndex].fireTableRowsUpdated(modelRow, modelRow);
                 }
 
                 DataManager.saveDocuments(documentList);
                 updateWarningDashboardCount();
-
-                AuditLogger.getInstance().log(
-                        currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]",
-                        "ИЗМЕНЕНИЕ",
-                        originalDocId,
-                        changeDetails
-                );
-
+                AuditLogger.getInstance().log(currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]", "ИЗМЕНЕНИЕ", docId, changeDetails);
                 updateStatus(tabbedPane.getSelectedIndex() + 1);
             }
         }
@@ -607,63 +426,32 @@ public class MainWindow extends JFrame {
 
     private void updateStatus(int level) {
         int total = 0, active = 0, inProgress = 0, archive = 0, canceled = 0;
-
         for (Document doc : documentList) {
             if (doc.getSmkLevel() == level) {
                 total++;
                 String status = doc.getStatus().trim();
-
-                if (status.equalsIgnoreCase("Действует")) {
-                    active++;
-                } else if (status.equalsIgnoreCase("В работе")) {
-                    inProgress++;
-                } else if (status.equalsIgnoreCase("В архиве")) {
-                    archive++;
-                } else if (status.equalsIgnoreCase("Отменен") || status.equalsIgnoreCase("Отменён")) {
-                    canceled++;
-                }
+                if (status.equalsIgnoreCase("Действует")) active++;
+                else if (status.equalsIgnoreCase("В работе")) inProgress++;
+                else if (status.equalsIgnoreCase("В архиве")) archive++;
+                else if (status.toLowerCase().startsWith("отменен")) canceled++;
             }
         }
-
-        statusLabelLeft.setText(String.format("НА УРОВНЕ %d: Всего: %d | Действует: %d | В работе: %d | В архиве: %d | Отменен: %d",
-                level, total, active, inProgress, archive, canceled));
+        statusLabelLeft.setText(String.format("НА УРОВНЕ %d: Всего: %d | Действует: %d | В работе: %d | В архиве: %d | Отменен: %d", level, total, active, inProgress, archive, canceled));
         statusLabelRight.setText(String.format("| ИТОГО В БАЗЕ СМК: %d документов ", documentList.size()));
     }
 
     private void addTestValues() {
-        addDocument(new Document("УР1-01", "Руководство по качеству испытательной лаборатории ООО 'Спектр'",
-                "05.08.2026", "Действует", 1, "Внутренний", "v2.0", "Сейф №1", "Сервер СМК", 2, "01.06.2026"));
-        addDocument(new Document("УР4-01", "ГОСТ ISO/IEC 17025-2019 Общие требования к компетентности испытательных лабораторий",
-                "12.01.2024", "Действует", 4, "Внешний", "", "Архив", "Полка №2", 1, "15.03.2026"));
+        addDocument(new Document("УР1-01", "Руководство по качеству испытательной лаборатории ООО 'Спектр'", "05.08.2026", "Действует", 1, "Внутренний", "v2.0", "Сейф №1", "Сервер СМК", 2, "01.06.2026"));
+        addDocument(new Document("УР4-01", "ГОСТ ISO/IEC 17025-2019 Общие требования к компетентности испытательных лабораторий", "12.01.2024", "Действует", 4, "Внешний", "", "Архив", "Полка №2", 1, "15.03.2026"));
     }
 
     private JTable getCurrentTable() {
         int selectedIndex = tabbedPane.getSelectedIndex();
-        if (selectedIndex != -1 && tables != null && selectedIndex < tables.length) {
-            return tables[selectedIndex];
-        }
-        return null;
-    }
-
-    public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> {
-            JFrame dummyFrame = new JFrame();
-            LoginDialog loginDialog = new LoginDialog(dummyFrame);
-            loginDialog.setVisible(true);
-
-            User user = loginDialog.getAuthenticatedUser();
-            if (user != null) {
-                dummyFrame.dispose();
-                new MainWindow(user).setVisible(true);
-            } else {
-                System.exit(0);
-            }
-        });
+        return (selectedIndex != -1 && tables != null) ? tables[selectedIndex] : null;
     }
 
     private void applyRowColoring(JTable table) {
         StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус", documentList);
-
         table.setDefaultRenderer(Object.class, renderer);
         for (int i = 0; i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setCellRenderer(renderer);
