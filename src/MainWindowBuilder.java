@@ -5,26 +5,26 @@ import java.awt.*;
 
 public class MainWindowBuilder {
 
-    public static JPanel createTopPanel(JButton[] buttons, JTextField searchField, JPanel warningDashboardPanel, User currentUser) {
+    public static JPanel createTopPanel(JButton[] mainButtons, JButton btnRestore, JButton btnTrash, JTextField searchField, JPanel warningDashboardPanel) {
         JPanel topPanel = new JPanel();
         topPanel.setLayout(new BoxLayout(topPanel, BoxLayout.Y_AXIS));
 
-        // Панель для основных действий
+        // 1. Первая строка: Основные кнопки управления
         JPanel buttonsPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        for (JButton btn : buttons) {
+        for (JButton btn : mainButtons) {
             buttonsPanel.add(btn);
         }
 
-        // Панель для бэкапа и поиска
+        // 2. Вторая строка: Восстановление из бэкапа, Корзина и Быстрый поиск
         JPanel searchPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
-        JButton btnRestore = buttons[buttons.length - 1]; // Последняя кнопка - восстановление (или можно передать отдельно)
-
-        // Пересортируем порядок для нижней панели, если нужно
-        searchPanel.add(buttons[3]); // Предположим, здесь кнопка бэкапа
+        searchPanel.add(btnRestore);
+        searchPanel.add(btnTrash);
         searchPanel.add(new JLabel("Быстрый поиск:"));
         searchPanel.add(searchField);
 
+        // 3. Сборка верхней панели в правильном порядке
         topPanel.add(buttonsPanel);
+        topPanel.add(searchPanel);
         topPanel.add(warningDashboardPanel);
 
         return topPanel;

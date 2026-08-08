@@ -49,9 +49,12 @@ public class AddDocumentDialog extends JDialog {
     /**
      * Конструктор для редактирования существующего документа
      */
-    public AddDocumentDialog(Frame parent, Document docToEdit) {
+    /**
+     * Конструктор для редактирования существующего документа
+     */
+    public AddDocumentDialog(MainWindow parent, Document docToEdit) {
         super(parent, docToEdit == null ? "Добавление документа СМК" : "Изменение документа СМК: " + docToEdit.getId(), true);
-        this.mainWin = (parent instanceof MainWindow) ? (MainWindow) parent : null;
+        this.mainWin = parent;
         this.docToEdit = docToEdit;
         this.isEditMode = (docToEdit != null);
         this.expectedLevel = docToEdit != null ? docToEdit.getSmkLevel() : 1;

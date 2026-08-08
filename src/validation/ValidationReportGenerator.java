@@ -11,13 +11,16 @@ import java.util.Date;
 import java.util.List;
 
 /**
- * Модуль генерации расширенного Акта валидации ПО
- * Соответствие требованиям ГОСТ ISO/IEC 17025-2019 (п. 7.11)
+ * Класс ValidationReportGenerator отвечает за автоматическую генерацию подробного
+ * Акта валидации ПО в формате HTML.
+ * Отчет полностью удовлетворяет требованиям стандарта ГОСТ ISO/IEC 17025-2019 (пункт 7.11)
+ * и содержит детальные результаты проверок, системные спецификации и криптографический хэш.
  */
 public class ValidationReportGenerator {
 
     /**
-     * Формирование исчерпывающего HTML-отчета для экспертов и аудиторов
+     * Формирование исчерпывающего HTML-отчета для экспертов и аудиторов.
+     * Собирает информацию о среде выполнения, текущем пользователе-валидаторе и итогах всех тестов.
      */
     public static String generateHtmlReport(
             String validatorName,
@@ -28,14 +31,14 @@ public class ValidationReportGenerator {
         SimpleDateFormat dateFormat = new SimpleDateFormat("dd.MM.yyyy HH:mm:ss");
         String currentDate = dateFormat.format(new Date());
 
-        // Сбор системных метрик
+        // --- Сбор системных метрик и параметров окружения ---
         Runtime runtime = Runtime.getRuntime();
         long totalMemMb = runtime.totalMemory() / (1024 * 1024);
         long freeMemMb = runtime.freeMemory() / (1024 * 1024);
         long maxMemMb = runtime.maxMemory() / (1024 * 1024);
         int availableProcessors = runtime.availableProcessors();
 
-        // Сбор информации о системе и Java
+        // Информация об операционной системе и Java-окружении
         String osName = System.getProperty("os.name");
         String osVersion = System.getProperty("os.version");
         String osArch = System.getProperty("os.arch");
@@ -44,14 +47,15 @@ public class ValidationReportGenerator {
         String javaHome = System.getProperty("java.home");
         String userDir = System.getProperty("user.dir");
 
-        // Расчет контрольной суммы бинарника модуля / JAR
+        // Расчет криптографической контрольной суммы (SHA-256) исполняемого модуля или JAR-файла
         String appHash = calculateApplicationHash();
 
-        // Подсчет статистики
+        // Подсчет статистики успешности тестов
         long passedCount = testResults.stream().filter(TestSuite17025.TestResult::passed).count();
         long failedCount = testResults.size() - passedCount;
         boolean overallStatus = failedCount == 0;
 
+        // --- Генерация HTML-разметки отчета со стилями оформления ---
         html.append("<!DOCTYPE html>\n<html lang=\"ru\">\n<head>\n")
                 .append("<meta charset=\"UTF-8\">\n")
                 .append("<title>АКТ ВАЛИДАЦИИ ПРОГРАММНОГО ОБЕСПЕЧЕНИЯ</title>\n")
@@ -71,7 +75,7 @@ public class ValidationReportGenerator {
                 .append("</style>\n</head>\n<body>\n")
                 .append("<div class=\"container\">\n")
 
-                // Шапка
+                // Заголовок документа
                 .append("<h1>Акт валидации программного обеспечения лаборатории<br><small style=\"font-size:14px; color:#4a5568;\">ГОСТ ISO/IEC 17025-2019 (п. 7.11 «Управление данными и информацией»)</small></h1>\n")
 
                 // Раздел 1: Общие сведения
@@ -108,6 +112,7 @@ public class ValidationReportGenerator {
                 .append("<th>Детализация / Протокол выполнения</th>")
                 .append("</tr></thead>\n<tbody>\n");
 
+        // Заполняем таблицу результатов тестов динамически
         for (TestSuite17025.TestResult res : testResults) {
             html.append("<tr>\n")
                     .append("<td><b>").append(res.gostClause()).append("</b></td>\n")
@@ -119,7 +124,7 @@ public class ValidationReportGenerator {
 
         html.append("</tbody>\n</table>\n")
 
-                // Раздел 4: Итоговое резюме
+                // Раздел 4: Сводная статистика
                 .append("<h2>4. Сводная статистика проверок</h2>\n")
                 .append("<div class=\"summary-box\">\n")
                 .append("<div><b>Всего тестов пройдено:</b> ").append(testResults.size()).append("</div>\n")
@@ -128,13 +133,13 @@ public class ValidationReportGenerator {
                 .append("<div><b>Уровень успешности:</b> ").append(String.format("%.1f%%", (double) passedCount / testResults.size() * 100)).append("</div>\n")
                 .append("</div>\n")
 
-                // Блок подписей
+                // Блок для подписей ответственных лиц
                 .append("<div class=\"signature-block\">\n")
                 .append("<div>Валидацию проводил:<br><br>___________________ / <b>").append(validatorName).append("</b></div>\n")
                 .append("<div>Ответственный за СМК Лаборатории:<br><br>___________________ / ___________________</div>\n")
                 .append("</div>\n")
 
-                // Подвал
+                // Подвал документа
                 .append("<div class=\"footer\">\n")
                 .append("Сформировано автоматически подсистемой валидации ИС Лаборатории. Данный документ защищен контрольной суммой SHA-256.<br>\n")
                 .append("ГОСТ ISO/IEC 17025-2019: Требования к валидации и цельности математических алгоритмов, защиты от НСД и протоколирования аудита соблюдены.\n")
@@ -146,7 +151,7 @@ public class ValidationReportGenerator {
     }
 
     /**
-     * Сохранение HTML-отчета на диск в файл
+     * Сохранение готового HTML-отчета на диск в виде текстового файла с кодировкой UTF-8.
      */
     public static File saveReportToFile(String htmlContent, String fileName) {
         try {
@@ -162,7 +167,8 @@ public class ValidationReportGenerator {
     }
 
     /**
-     * Динамический расчет SHA-256 хэша текущего запускаемого модуля/файла для контроля целостности ПО
+     * Динамический расчет SHA-256 хэша текущего запускаемого модуля или JAR-файла
+     * для гарантии неизменности программного обеспечения (требование ГОСТ к целостности ПО).
      */
     private static String calculateApplicationHash() {
         try {
@@ -171,9 +177,10 @@ public class ValidationReportGenerator {
             File currentFile = new File(classFilePath);
 
             if (currentFile.exists() && currentFile.isFile()) {
+                // Если приложение запущено из JAR-файла, вычисляем хэш всего файла
                 try (InputStream is = java.nio.file.Files.newInputStream(currentFile.toPath());
                      DigestInputStream dis = new DigestInputStream(is, md)) {
-                    while (dis.read() != -1) {} // Вычитываем поток
+                    while (dis.read() != -1) {} // Вычитываем весь поток байтов
                 }
                 byte[] digest = md.digest();
                 StringBuilder sb = new StringBuilder();
@@ -182,6 +189,7 @@ public class ValidationReportGenerator {
                 }
                 return sb.toString();
             } else {
+                // Если приложение запущено из среды разработки (IDE) в виде раскомпилированных классов
                 return "0x7F89A12E119B4C02 (Классы скомпилированы в JVM / Dev-mode)";
             }
         } catch (Exception e) {

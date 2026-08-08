@@ -95,6 +95,8 @@ public class AuditLogger {
         writeToEncryptedLog(timeStamp, safeUser, safeAction, safeDocId, safeDetails);
     }
 
+
+
     /**
      * Запись строки в файл Excel (CSV)
      */

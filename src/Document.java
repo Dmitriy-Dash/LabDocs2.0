@@ -20,6 +20,7 @@ public class Document implements Serializable {
     private String storageCopies;
     private int copyCount;
     private String actualizationDate;
+    private boolean isDeleted = false;
 
     public Document(String id, String title, String date, String status, int smkLevel,
                     String origin, String version, String storageOriginal, String storageCopies,
@@ -61,6 +62,7 @@ public class Document implements Serializable {
     public String getStorageCopies() { return storageCopies; }
     public int getCopyCount() { return copyCount; }
     public String getActualizationDate() { return actualizationDate; }
+    public boolean isDeleted() { return isDeleted; }
 
     // Сеттеры
     public void setId(String id) { this.id = id; }
@@ -71,6 +73,7 @@ public class Document implements Serializable {
     public void setStorageOriginal(String storageOriginal) { this.storageOriginal = storageOriginal; }
     public void setStorageCopies(String storageCopies) { this.storageCopies = storageCopies; }
     public void setCopyCount(int copyCount) { this.copyCount = copyCount; }
+    public void setDeleted(boolean deleted) {isDeleted = deleted;}
 
     public String getActualizationStatus() {
         if (actualizationDate == null || "Не требуется".equalsIgnoreCase(actualizationDate)) {

@@ -10,87 +10,110 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 
 /**
- * Изолированная утилита для администрирования логов аудита.
- * Синхронно обновляет как зашифрованный файл (.enc), так и открытый Excel-файл (.csv).
+ * Класс AuditEditorApp представляет собой независимое графическое приложение (JFrame)
+ * для административного управления и редактирования журналов аудита СМК.
+ * Обеспечивает одновременную расшифровку, редактирование, шифрование (.enc)
+ * и синхронизацию с табличным форматом Excel (.csv).
  */
 public class AuditEditorApp extends JFrame {
 
-    private JTextArea logTextArea;
-    private JLabel statusLabel;
-    private File currentLogFile;
-    private String originalContent = "";
+    // Графические компоненты интерфейса
+    private JTextArea logTextArea;       // Текстовая область для просмотра и редактирования строк логов
+    private JLabel statusLabel;          // Строка состояния приложения внизу окна
+    private File currentLogFile;         // Ссылка на в данный момент открытый файл логов (.enc)
+    private String originalContent = ""; // Буфер для хранения исходного текста (нужен для функции сброса изменений)
 
-    // Стандартные имена файлов журнала (если они находятся в папке проекта)
+    // Стандартное имя файла журнала Excel для синхронизации в той же папке
     private static final String DEFAULT_CSV_PATH = "audit_journal.csv";
 
+    /**
+     * Конструктор приложения: задает размеры, название, отключает операцию закрытия по умолчанию
+     * и инициализирует графический интерфейс.
+     */
     public AuditEditorApp() {
         setTitle("Административная утилита: Редактор журнала аудита СМК (ENC + CSV)");
         setSize(1000, 680);
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLocationRelativeTo(null);
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE); // Закрытие приложения останавливает процесс
+        setLocationRelativeTo(null);                    // Центрируем окно на экране
 
         initUI();
     }
 
+    /**
+     * Инициализация и компоновка элементов пользовательского интерфейса (UI).
+     */
     private void initUI() {
-        // --- Верхняя панель управления ---
+        // --- Верхняя панель управления (ToolBar) ---
         JToolBar toolBar = new JToolBar();
-        toolBar.setFloatable(false);
-        // Добавляем новую кнопку на тулбар:
+        toolBar.setFloatable(false); // Делаем панель инструментов неперетаскиваемой
+
+        // Создаем кнопку смены пароля администратора
         JButton btnChangePass = new JButton("Сменить пароль");
-        // Добавляем слушатель события:
         btnChangePass.addActionListener(e -> {
             ChangePasswordDialog dialog = new ChangePasswordDialog(this);
-            dialog.setVisible(true);
+            dialog.setVisible(true); // Открываем диалоговое окно смены пароля
         });
 
+        // Создаем остальные управляющие кнопки
         JButton btnOpenFile = new JButton("Открыть лог (.enc)");
         JButton btnSaveEncrypted = new JButton("Сохранить изменения (ENC + CSV)");
         JButton btnReload = new JButton("Сбросить изменения");
 
+        // Визуальное оформление кнопок
         btnOpenFile.setFont(new Font("Segoe UI", Font.BOLD, 12));
         btnSaveEncrypted.setFont(new Font("Segoe UI", Font.BOLD, 12));
-        btnSaveEncrypted.setForeground(new Color(0, 102, 204));
+        btnSaveEncrypted.setForeground(new Color(0, 102, 204)); // Выделяем кнопку сохранения синим цветом
 
+        // Добавляем элементы управления на тулбар
         toolBar.add(btnOpenFile);
         toolBar.add(btnReload);
-        toolBar.addSeparator();
+        toolBar.addSeparator(); // Разделительная линия
         toolBar.add(btnSaveEncrypted);
-        toolBar.add(btnChangePass); // Новая кнопка
+        toolBar.add(btnChangePass);
 
-        // --- Текстовая область редактора ---
+        // --- Центральная текстовая область редактора ---
         logTextArea = new JTextArea();
-        logTextArea.setFont(new Font("Monospaced", Font.PLAIN, 13));
+        logTextArea.setFont(new Font("Monospaced", Font.PLAIN, 13)); // Моноширинный шрифт для ровного выравнивания строк логов
         logTextArea.setTabSize(4);
-        JScrollPane scrollPane = new JScrollPane(logTextArea);
+        JScrollPane scrollPane = new JScrollPane(logTextArea); // Добавляем прокрутку для больших логов
 
-        // --- Ниже панель статуса ---
+        // --- Нижняя панель статуса ---
         JPanel statusPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         statusLabel = new JLabel("Выберите зашифрованный файл audit_journal.enc для работы.");
         statusPanel.add(statusLabel);
 
-        // Обработчики событий
+        // --- Привязка обработчиков событий к кнопкам ---
         btnOpenFile.addActionListener(e -> openAndDecryptFile());
         btnSaveEncrypted.addActionListener(e -> saveAndEncryptFile());
         btnReload.addActionListener(e -> resetText());
 
+        // --- Сборка главного окна ---
         add(toolBar, BorderLayout.NORTH);
         add(scrollPane, BorderLayout.CENTER);
         add(statusPanel, BorderLayout.SOUTH);
     }
 
+    /**
+     * Открытие диалогового выбора файла, чтение зашифрованного содержимого
+     * и его последующая расшифровка с помощью LogCryptoService.
+     */
     private void openAndDecryptFile() {
         JFileChooser chooser = new JFileChooser();
         chooser.setDialogTitle("Выберите файл зашифрованного лога");
-        chooser.setSelectedFile(new File("audit_journal.enc"));
+        chooser.setSelectedFile(new File("audit_journal.enc")); // Предлагаем файл по умолчанию
+        // Ограничиваем выбор файлов только расширениями .enc и .dat
         chooser.setFileFilter(new FileNameExtensionFilter("Файлы зашифрованных логов (*.enc, *.dat)", "enc", "dat"));
 
         if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             currentLogFile = chooser.getSelectedFile();
             try {
+                // Читаем зашифрованную строку из файла
                 String rawEncryptedContent = Files.readString(currentLogFile.toPath(), StandardCharsets.UTF_8);
-                // Расшифровка через LogCryptoService
+
+                // Выполняем расшифровку через сервис криптографии
                 originalContent = LogCryptoService.decrypt(rawEncryptedContent);
+
+                // Выводим расшифрованный текст в текстовое поле и возвращаем каретку в начало
                 logTextArea.setText(originalContent);
                 logTextArea.setCaretPosition(0);
 
@@ -103,12 +126,17 @@ public class AuditEditorApp extends JFrame {
         }
     }
 
+    /**
+     * Запрос подтверждения, шифрование измененного текста обратно в .enc
+     * и синхронизация данных с CSV-файлом для Excel.
+     */
     private void saveAndEncryptFile() {
         if (currentLogFile == null) {
             JOptionPane.showMessageDialog(this, "Сначала откройте файл лога!", "Предупреждение", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
+        // Запрашиваем подтверждение у администратора
         int confirm = JOptionPane.showConfirmDialog(
                 this,
                 "Вы уверены, что хотите сохранить изменения?\nБудут одновременно обновлены файлы audit_journal.enc и audit_journal.csv!",
@@ -120,15 +148,15 @@ public class AuditEditorApp extends JFrame {
             try {
                 String editedText = logTextArea.getText();
 
-                // 1. Сохраняем и зашифровываем основной .enc файл
+                // 1. Зашифровываем отредактированный текст и сохраняем в основной .enc файл
                 String encryptedText = LogCryptoService.encrypt(editedText);
                 Files.writeString(currentLogFile.toPath(), encryptedText, StandardCharsets.UTF_8);
 
-                // 2. Парсим отредактированный текст и обновляем Excel CSV файл
+                // 2. Парсим текст и обновляем параллельный Excel CSV файл в той же директории
                 File csvFile = new File(currentLogFile.getParent(), DEFAULT_CSV_PATH);
                 syncWithCsvLog(csvFile, editedText);
 
-                originalContent = editedText;
+                originalContent = editedText; // Обновляем оригинал после успешного сохранения
 
                 JOptionPane.showMessageDialog(this,
                         "Логи успешно зашифрованы и синхронизированы с Excel (CSV)!",
@@ -144,23 +172,25 @@ public class AuditEditorApp extends JFrame {
     }
 
     /**
-     * Конвертирует отредактированные строки текстового лога в формат CSV для Excel с UTF-8 BOM
+     * Конвертирует отредактированные текстовые строки лога обратно в табличный формат CSV
+     * с добавлением UTF-8 BOM для корректного отображения кириллицы в Microsoft Excel.
      */
     private void syncWithCsvLog(File csvFile, String plainTextLogs) {
         try (FileOutputStream fos = new FileOutputStream(csvFile);
              OutputStreamWriter writer = new OutputStreamWriter(fos, StandardCharsets.UTF_8)) {
 
-            // Записываем UTF-8 BOM для корректного открытия кириллицы в Excel
+            // Записываем UTF-8 BOM (Byte Order Mark), чтобы Excel понимал кодировку без "кракозябр"
             fos.write(new byte[]{(byte) 0xEF, (byte) 0xBB, (byte) 0xBF});
 
-            // Заголовок CSV
+            // Записываем шапку таблицы CSV
             writer.write("Дата и время;Пользователь/Роль;Действие;ID Документа;Детали/Примечание\n");
 
+            // Разбиваем текст на отдельные строки
             String[] lines = plainTextLogs.split("\r?\n");
             for (String line : lines) {
-                if (line.trim().isEmpty()) continue;
+                if (line.trim().isEmpty()) continue; // Пропускаем пустые строки
 
-                // Разбор строки вида: [dd.MM.yyyy HH:mm:ss] | USER: Admin | ACTION: ИЗМЕНЕНИЕ | DOC: УР1-01 | DETAILS: ...
+                // Превращаем текстовую строку лога в строку с разделителями-точкой с запятой (;)
                 String csvLine = parseLogLineToCsv(line);
                 if (csvLine != null) {
                     writer.write(csvLine + "\n");
@@ -171,6 +201,10 @@ public class AuditEditorApp extends JFrame {
         }
     }
 
+    /**
+     * Вспомогательный метод парсинга строки лога на составные части
+     * для формирования колонок табличного CSV-файла.
+     */
     private String parseLogLineToCsv(String logLine) {
         try {
             String timestamp = "";
@@ -179,7 +213,7 @@ public class AuditEditorApp extends JFrame {
             String doc = "";
             String details = "";
 
-            // Извлекаем Timestamp [...]
+            // Извлекаем временную метку из квадратных скобок [...] в начале строки
             if (logLine.startsWith("[")) {
                 int endBracket = logLine.indexOf("]");
                 if (endBracket != -1) {
@@ -188,7 +222,7 @@ public class AuditEditorApp extends JFrame {
                 }
             }
 
-            // Разбиваем оставшиеся части по разделителю "|"
+            // Разбиваем оставшуюся часть строки по вертикальной черте (|)
             String[] parts = logLine.split("\\|");
             for (String part : parts) {
                 part = part.trim();
@@ -198,13 +232,17 @@ public class AuditEditorApp extends JFrame {
                 else if (part.startsWith("DETAILS:")) details = part.substring(8).trim();
             }
 
+            // Собираем обратно в CSV-строку, заменяя точки с запятой в деталях на запятые во избежание сдвига колонок
             return String.format("%s;%s;%s;%s;%s", timestamp, user, action, doc, details.replace(";", ","));
         } catch (Exception e) {
-            // Если администратор ввел произвольную строку не по формату, помещаем её в детали
+            // Если структура нарушена (админ написал произвольный текст), записываем всю строку в колонку деталей
             return String.format(";ADMIN_EDIT;;;%s", logLine.replace(";", ","));
         }
     }
 
+    /**
+     * Сбрасывает текущие изменения в редакторе к моменту последней загрузки/сохранения файла.
+     */
     private void resetText() {
         if (originalContent != null) {
             logTextArea.setText(originalContent);
@@ -212,17 +250,25 @@ public class AuditEditorApp extends JFrame {
         }
     }
 
+    /**
+     * Главный метод программы (точка входа).
+     * Сначала вызывает модальное окно аутентификации администратора (`AdminSecurityManager.authenticate()`).
+     * Если пароль введен неверно или окно закрыто — приложение завершает работу.
+     */
     public static void main(String[] args) {
         SwingUtilities.invokeLater(() -> {
+            // Проверка прав администратора перед запуском редактора
             if (!AdminSecurityManager.authenticate()) {
-                System.exit(0);
+                System.exit(0); // Завершаем процесс, если авторизация провалена
                 return;
             }
 
+            // Устанавливаем системный стиль оформления интерфейса (Look and Feel)
             try {
                 UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
             } catch (Exception ignored) {}
 
+            // Создаем и делаем видимым главное окно утилиты
             new AuditEditorApp().setVisible(true);
         });
     }

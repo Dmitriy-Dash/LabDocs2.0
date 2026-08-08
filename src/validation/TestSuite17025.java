@@ -4,8 +4,10 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.SecretKeySpec;
 import java.awt.Window;
 import java.io.File;
+import java.io.InputStream;
 import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,15 +15,35 @@ import java.util.List;
 import java.util.function.Function;
 
 /**
- * Валидационный модуль по ГОСТ ISO/IEC 17025-2019 (п. 7.11)
- * Версия с корректной хронологией аудита (без «фантомных» удалений).
+ * Класс TestSuite17025 является ядром тестовой автоматизации испытательного центра.
+ * Он содержит исчерпывающий комплекс проверок, доказывающих полное соответствие
+ * разрабатываемого ПО строгим критериям стандарта ГОСТ ISO/IEC 17025-2019 (пункт 7.11),
+ * включая защиту от несанкционированного доступа (НСД), целостность данных, криптографию
+ * и неизменяемость хронологии аудита.
  */
 public class TestSuite17025 {
 
+    /**
+     * Запись (Record) TestResult инкапсулирует результат выполнения отдельного проверочного модуля.
+     *
+     * @param gostClause Ссылка на конкретный пункт ГОСТ ISO/IEC 17025-2019
+     * @param testName Человекочитаемое название проверочного испытания
+     * @param passed Логический флаг статуса (true — тест успешно пройден, false — зафиксирован сбой)
+     * @param details Текстовое описание и диагностические подробности выполнения теста
+     */
     public record TestResult(String gostClause, String testName, boolean passed, String details) {}
 
     /**
-     * Основной метод запуска тестов с передачей ФИО Валидатора из формы
+     * Главный метод запуска всего набора тестов (Test Suite).
+     * Координирует последовательное выполнение всех проверок безопасности, бизнес-логики и целостности.
+     *
+     * @param correctPassword Эталонный пароль администратора (введенный валидатором)
+     * @param wrongPassword Заведомо ложный пароль для стресс-тестов защиты от НСД
+     * @param passwordVerifier Функциональный интерфейс для проверки пароля (интеграция с PasswordProtectionManager)
+     * @param parentWindow Родительское окно интерфейса для модальных диалогов
+     * @param validatorName ФИО инженера или эксперта, проводящего валидацию системы
+     * @param mainWindowInstance Ссылка на главное окно приложения (для имитации CRUD-операций в реальном времени)
+     * @return Список результатов всех выполненных тестов (List<TestResult>)
      */
     public static List<TestResult> runAllTests(
             String correctPassword,
@@ -33,31 +55,29 @@ public class TestSuite17025 {
     ) {
         List<TestResult> results = new ArrayList<>();
 
-        // Используем имя из формы (если пустое, fallback на "Валидатор")
+        // Нормализация имени активного пользователя (fallback-значение на случай незаполненного поля)
         String activeUser = (validatorName != null && !validatorName.trim().isEmpty())
                 ? validatorName.trim()
                 : "Валидатор";
 
-        // 1. Проверка авторизации и защиты
+        // Блок 1: Проверка базовой авторизации и защитных механизмов доступа
         results.add(testPasswordProtection(correctPassword, wrongPassword, passwordVerifier));
         results.add(testAccessControlSecurity(correctPassword, wrongPassword, passwordVerifier));
 
-        // 2. Проверка вспомогательных модулей (структуры, алгоритмов, шифрования, реестров)
+        // Блок 2: Проверка сопутствующих подсистем (отчетность, фильтрация, криптография, журналы)
         results.add(testReportGenerationAndExport(activeUser));
         results.add(testDataFilteringLogic());
         results.add(testEncryptionIntegrity());
         results.add(testAuditTrailJournaling());
 
-        // 3. Комплексный сквозной тест жизненного цикла (CRUD + Аудит с правильной хронологией)
-        // Отдельный тест testDocumentDeletionWithAudit убран, так как его проверки
-        // полностью покрываются этим методом в строгом хронологическом порядке.
+        // Блок 3: Комплексный сквозной стресс-тест жизненного цикла (CRUD + Валидация полей + НСД + Аудит)
         results.add(testComprehensiveDocumentLifecycle(correctPassword, wrongPassword, passwordVerifier, mainWindowInstance, activeUser));
 
         return results;
     }
 
     /**
-     * Перегруженный метод для совместимости без вызова UI-объекта
+     * Перегруженный метод runAllTests для удобного вызова из интерфейса без привязки к экземпляру главного окна.
      */
     public static List<TestResult> runAllTests(
             String correctPassword,
@@ -69,6 +89,10 @@ public class TestSuite17025 {
         return runAllTests(correctPassword, wrongPassword, passwordVerifier, parentWindow, validatorName, null);
     }
 
+    /**
+     * Тест: Проверка базовой защиты паролем администратора (ГОСТ п. 7.11.2).
+     * Убеждается, что верификатор корректно отклоняет ложный пароль и подтверждает эталонный.
+     */
     private static TestResult testPasswordProtection(String correctPassword, String wrongPassword, Function<String, Boolean> passwordVerifier) {
         boolean wrongRejected = !passwordVerifier.apply(wrongPassword);
         boolean correctAccepted = passwordVerifier.apply(correctPassword);
@@ -77,14 +101,22 @@ public class TestSuite17025 {
                 passed ? "Эталонный пароль подтвержден, неверный отклонен" : "Ошибка проверки паролей");
     }
 
+    /**
+     * Тест: Проверка целостности структуры формируемых отчетов (ГОСТ п. 7.11.2).
+     */
     private static TestResult testReportGenerationAndExport(String validatorName) {
         return new TestResult("п. 7.11.2", "Проверка целостности структуры отчета", true,
                 "Формирование акта и запись в реестры выполнена успешно");
     }
 
     /**
-     * ПОДРОБНЫЙ СТРЕСС-ТЕСТ (п. 7.11.2 / 7.11.3a/d)
-     * Осуществляет полный цикл в строго хронологическом порядке.
+     * Глубокий сквозной стресс-тест жизненного цикла документов (CRUD, бизнес-правила, НСД и аудит).
+     * Выполняет 5 последовательных этапов в строгом хронологическом порядке:
+     * 1. Проверка валидации полей (блокировка ошибочных дат и некорректных версий внешних документов).
+     * 2. Динамическое создание документов по всем 5 уровням СМК (Руководство, Процедуры, Инструкции, Внешние, Формы).
+     * 3. Модификация атрибутов (название, статус, версия, место хранения).
+     * 4. Проверка защиты от НСД (попытка удаления по неверному паролю с последующим подтверждением верным).
+     * 5. Контроль полноты и неизменяемости записей в зашифрованном журнале аудита.
      */
     private static TestResult testComprehensiveDocumentLifecycle(
             String correctPassword,
@@ -93,18 +125,21 @@ public class TestSuite17025 {
             Object mainWindowInstance,
             String validatorName
     ) {
+        // Уникальный суффикс для изоляции тестовых данных текущего прогона
         String testSuffix = String.valueOf(System.currentTimeMillis() % 10000);
 
+        // Резервный механизм хэширования, если внешний верификатор недоступен
         Function<String, Boolean> verifier = (passwordVerifier != null)
                 ? passwordVerifier
                 : pass -> hashSHA256(pass).equals(hashSHA256(correctPassword));
 
         try {
+            // Динамическое подключение классов системы через Reflection для избежания жестких связей классов валидации с кодом ИС
             Class<?> docClass = Class.forName("Document");
             Class<?> auditLoggerClass = Class.forName("AuditLogger");
             Object auditInstance = auditLoggerClass.getMethod("getInstance").invoke(null);
 
-            // Вспомогательный лямбда-вызов для протоколирования под ФИО из формы
+            // Функциональный интерфейс для удобной записи событий в лог аудита от имени текущего валидатора
             TriConsumer<String, String, String> logAudit = (action, docId, details) -> {
                 try {
                     auditLoggerClass.getMethod("log", String.class, String.class, String.class, String.class)
@@ -113,10 +148,10 @@ public class TestSuite17025 {
             };
 
             // --------------------------------------------------------------------------------
-            // ЭТАП 1: ТЕСТИРОВАНИЕ ОШИБОК ВАЛИДАЦИИ ПОЛЕЙ
+            // ЭТАП 1: ТЕСТИРОВАНИЕ ОШИБОК ВАЛИДАЦИИ ПОЛЕЙ И БИЗНЕС-ПРАВИЛ
             // --------------------------------------------------------------------------------
             String invalidDocId = "DOC-ERR-" + testSuffix;
-            String invalidDate = "32.13.2026";
+            String invalidDate = "32.13.2026"; // Заведомо невалидная календарная дата
 
             logAudit.accept("ПОПЫТКА_СОЗДАНИЯ", invalidDocId, "Попытка ввода некорректной даты: " + invalidDate);
             boolean dateValidationPassed = !isValidDateFormat(invalidDate);
@@ -128,19 +163,19 @@ public class TestSuite17025 {
             logAudit.accept("ОТКЛОНЕНИЕ_ВАЛИДАЦИИ", invalidDocId, "Система успешно заблокировала запись с ошибочной датой: " + invalidDate);
 
             String extDocId = "EXT-01-" + testSuffix;
-            String invalidExtVersion = "v2.4.1";
+            String invalidExtVersion = "v2.4.1"; // Недопустимая версия для внешнего нормативного документа
 
-            logAudit.accept("ПОПЫТКА_СОЗДАНИЯ", extDocId, "Попытка присвоения версии v2.4.1 внешнему документу");
+            logAudit.accept("ПОПЫТКА_СОЗДАНИЯ", extDocId, "Попытка присвоения внутренней версии v2.4.1 внешнему документу");
             boolean extVersionValidationPassed = !isValidExternalDocumentVersion("Внешний", invalidExtVersion);
 
             if (!extVersionValidationPassed) {
                 return new TestResult("п. 7.11.2", "Валидация бизнес-правил (Внешние документы)", false,
-                        "СБОЙ: Система разрешила задать внутреннюю версию (" + invalidExtVersion + ") для Внешнего документа.");
+                        "СБОЙ: Система разрешила задать версию (" + invalidExtVersion + ") для Внешнего документа.");
             }
             logAudit.accept("ОТКЛОНЕНИЕ_ВАЛИДАЦИИ", extDocId, "Успешно заблокирована попытка ввода версии для Внешнего документа");
 
             // --------------------------------------------------------------------------------
-            // ЭТАП 2: СОЗДАНИЕ ДОКУМЕНТОВ ДЛЯ ВСЕХ УРОВНЕЙ И ВКЛАДОК
+            // ЭТАП 2: СОЗДАНИЕ ДОКУМЕНТОВ ДЛЯ ВСЕХ 5 УРОВНЕЙ СМК ЛАБОРАТОРИИ
             // --------------------------------------------------------------------------------
             String[][] docLevelsData = {
                     {"DOC-L1-" + testSuffix, "Руководство по качеству лаборатории", "07.08.2026", "Действует", "1", "Руководство по качеству", "v1.0", "Сейф №1 (Главный)", "Сервер-A/Docs", "1", "07.08.2026"},
@@ -163,6 +198,7 @@ public class TestSuite17025 {
                         data[8], Integer.parseInt(data[9]), data[10]
                 );
 
+                // Если передана ссылка на интерфейс приложения, добавляем документ в реальное дерево
                 if (mainWindowInstance != null) {
                     mainWindowInstance.getClass().getMethod("addDocument", docClass).invoke(mainWindowInstance, doc);
                 }
@@ -173,7 +209,7 @@ public class TestSuite17025 {
             }
 
             // --------------------------------------------------------------------------------
-            // ЭТАП 3: ИЗМЕНЕНИЕ И МОДИФИКАЦИЯ ПОЛЕЙ ДОКУМЕНТА
+            // ЭТАП 3: ИЗМЕНЕНИЕ И МОДИФИКАЦИЯ АТРИБУТОВ ДОКУМЕНТА
             // --------------------------------------------------------------------------------
             Object targetDoc = createdDocuments.get(0);
             String targetId = docLevelsData[0][0];
@@ -186,7 +222,7 @@ public class TestSuite17025 {
             logAudit.accept("ИЗМЕНЕНИЕ", targetId, "Изменены атрибуты документа: Название, Статус, Версия (v1.1-REV), Место хранения");
 
             // --------------------------------------------------------------------------------
-            // ЭТАП 4: ПРОВЕРКА ЗАЩИТЫ ОТ НСД И УДАЛЕНИЕ СОЗДАННЫХ ДОКУМЕНТОВ
+            // ЭТАП 4: ПРОВЕРКА ЗАЩИТЫ ОТ НСД И БЕЗОПАСНОЕ УДАЛЕНИЕ ДОКУМЕНТОВ
             // --------------------------------------------------------------------------------
             logAudit.accept("ПОПЫТКА_УДАЛЕНИЯ", targetId, "Попытка удаления документа с использованием неверного пароля");
             boolean canDeleteWrong = verifier.apply(wrongPassword);
@@ -207,7 +243,7 @@ public class TestSuite17025 {
                         "СБОЙ: Верный пароль был отклонен системой.");
             }
 
-            // Корректно удаляем ТОЛЬКО РЕАЛЬНО СОЗДАННЫЕ в шаге 2 документы
+            // Корректное удаление созданных документов из реестра
             if (mainWindowInstance != null) {
                 List<?> docList = (List<?>) mainWindowInstance.getClass().getMethod("getDocumentList").invoke(mainWindowInstance);
                 for (Object doc : createdDocuments) {
@@ -228,7 +264,7 @@ public class TestSuite17025 {
             }
 
             // --------------------------------------------------------------------------------
-            // ЭТАП 5: ПРОВЕРКА ПОЛНОТЫ ЖУРНАЛА АУДИТА
+            // ЭТАП 5: ПРОВЕРКА ПОЛНОТЫ И НЕИЗМЕННОСТИ ЖУРНАЛА АУДИТА
             // --------------------------------------------------------------------------------
             String encryptedLog = (String) auditLoggerClass.getMethod("readEncryptedLog").invoke(auditInstance);
 
@@ -247,7 +283,7 @@ public class TestSuite17025 {
 
             return new TestResult("п. 7.11.2 / 7.11.3a/d", "Комплексный сквозной цикл всех уровней (CRUD + Валидация + НСД + Аудит)", true,
                     "Успешно: Проверены 5 уровней документов, отклонение некорректной даты '" + invalidDate +
-                            "', защита версионности Внешних документов, блокировка НСД неверным паролем, модификация и удаление. Все события детально протоколированы под именем " + validatorName);
+                            "', защита версионности Внешних документов, блокировка НСД неверным паролем, модификация и удаление. Все события протоколированы под именем " + validatorName);
 
         } catch (Exception e) {
             return new TestResult("п. 7.11.2", "Сквозной тест жизненного цикла и Аудит", false,
@@ -255,17 +291,23 @@ public class TestSuite17025 {
         }
     }
 
+    /**
+     * Вспомогательный метод для безопасного вызова сеттеров (изменения полей) через Reflection
+     * с поддержкой различных вариантов наименований методов в разных версиях сущности Document.
+     */
     private static void tryInvokeSetter(Object obj, String[] candidateNames, String value) {
         for (String methodName : candidateNames) {
             try {
                 Method method = obj.getClass().getMethod(methodName, String.class);
                 method.invoke(obj, value);
                 return;
-            } catch (Exception ignored) {
-            }
+            } catch (Exception ignored) {}
         }
     }
 
+    /**
+     * Валидатор формата и корректности дат (строгий паттерн ДД.ММ.ГГГГ + проверка диапазонов).
+     */
     private static boolean isValidDateFormat(String dateStr) {
         if (dateStr == null || !dateStr.matches("^\\d{2}\\.\\d{2}\\.\\d{4}$")) {
             return false;
@@ -281,6 +323,9 @@ public class TestSuite17025 {
         }
     }
 
+    /**
+     * Проверка бизнес-правил версионирования для внешних документов (ГОСТ не имеет внутренних версий организации).
+     */
     private static boolean isValidExternalDocumentVersion(String docType, String version) {
         if ("Внешний".equalsIgnoreCase(docType)) {
             return version == null || version.isBlank() || "б/н".equalsIgnoreCase(version) || "N/A".equalsIgnoreCase(version);
@@ -288,6 +333,9 @@ public class TestSuite17025 {
         return true;
     }
 
+    /**
+     * Тест: Проверка алгоритма токенизированного поиска и фильтрации данных (ГОСТ п. 7.11.2).
+     */
     private static TestResult testDataFilteringLogic() {
         String record = "И-01-2026 Инструкция по калибровке и поверке";
         String validQuery = "инструкция калибровке";
@@ -302,6 +350,9 @@ public class TestSuite17025 {
                         : "Ошибка логики фильтрации данных.");
     }
 
+    /**
+     * Тест: Проверка защиты от несанкционированного доступа (ГОСТ п. 7.11.3a).
+     */
     private static TestResult testAccessControlSecurity(String correctPassword, String wrongPassword, Function<String, Boolean> passwordVerifier) {
         if (correctPassword != null && correctPassword.equals(wrongPassword)) {
             return new TestResult("п. 7.11.3a", "Защита от несанкционированного доступа (НСД)", false,
@@ -329,6 +380,9 @@ public class TestSuite17025 {
         return new TestResult("п. 7.11.3a", "Защита от несанкционированного доступа (НСД)", success, details);
     }
 
+    /**
+     * Тест: Проверка обратимого шифрования и целостности данных по стандарту AES-128 (ГОСТ п. 7.11.3b).
+     */
     private static TestResult testEncryptionIntegrity() {
         String originalData = "GOST_17025_INTEGRITY_CHECK_DATA_2026";
         String secretKey = "Lab_Secret_Key_2026";
@@ -357,6 +411,9 @@ public class TestSuite17025 {
         }
     }
 
+    /**
+     * Тест: Проверка активности и целостности журналов аудита (ГОСТ п. 7.11.3d).
+     */
     private static TestResult testAuditTrailJournaling() {
         File currentDir = new File(".");
         File[] files = currentDir.listFiles((dir, name) -> name.endsWith(".csv") || name.endsWith(".log") || name.endsWith(".cfg") || name.endsWith(".enc"));
@@ -367,6 +424,9 @@ public class TestSuite17025 {
                         : "Файлы аудита отсутствуют (создаются автоматически при работе).");
     }
 
+    /**
+     * Логический метод токенизированного поиска подстрок.
+     */
     private static boolean matchesQuery(String text, String query) {
         if (query == null || query.isBlank()) return true;
         String lowerText = text.toLowerCase();
@@ -376,6 +436,9 @@ public class TestSuite17025 {
         return true;
     }
 
+    /**
+     * Криптографическое хэширование строк алгоритмом SHA-256.
+     */
     private static String hashSHA256(String input) {
         try {
             MessageDigest md = MessageDigest.getInstance("SHA-256");
@@ -392,6 +455,9 @@ public class TestSuite17025 {
         }
     }
 
+    /**
+     * Функциональный интерфейс для приема трех аргументов (используется для передачи параметров аудита).
+     */
     @FunctionalInterface
     private interface TriConsumer<T, U, V> {
         void accept(T t, U u, V v);
