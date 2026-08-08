@@ -34,9 +34,12 @@ public class MainWindow extends JFrame {
     private JLabel warningCounterLabel;
     private JPanel warningDashboardPanel;
     private JLabel warningTitleLabel;
+    private User currentUser;
 
-    public MainWindow() {
-        setTitle("Учет документов СМК Испытательной Лаборатории (x86/x64)");
+    public MainWindow(User currentUser) {
+        this.currentUser = currentUser;
+        setTitle("Учет документов СМК Испытательной Лаборатории | Пользователь: " +
+                currentUser.getFullName() + " (" + currentUser.getRole().getDisplayName() + ")");
         setSize(1250, 680);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setLocationRelativeTo(null);
@@ -78,20 +81,32 @@ public class MainWindow extends JFrame {
         JLabel searchLabel = new JLabel("Быстрый поиск:");
         searchField = new JTextField(25);
 
-        // Порядок добавления: сначала кнопка восстановления, затем поиск
         searchPanel.add(btnRestore);
         searchPanel.add(searchLabel);
         searchPanel.add(searchField);
 
         topPanel.add(buttonsPanel);
         topPanel.add(searchPanel);
+
+        // --- БЛОКИРОВКА КНОПОК ПО РОЛЯМ ---
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+            addButton.setEnabled(false);
+            editButton.setEnabled(false);
+            deleteButton.setEnabled(false);
+            btnRestore.setEnabled(false);
+            auditButton.setEnabled(false);
+        } else if (currentUser.getRole() == User.Role.OPERATOR) {
+            // Оператор имеет доступ к добавлению/редактированию, но удаление идет через пароль менеджера
+        }
+
         // --- ВИДЖЕТ ПРЕДУПРЕЖДЕНИЙ (ДАШБОРД) ---
         warningDashboardPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 5));
         warningDashboardPanel.setBorder(BorderFactory.createCompoundBorder(
                 BorderFactory.createEmptyBorder(0, 5, 5, 5),
                 BorderFactory.createLineBorder(new Color(220, 180, 100), 1, true)
         ));
-        warningDashboardPanel.setBackground(new Color(255, 255, 220)); // Светло-желтый оттенок для привлечения внимания
+        warningDashboardPanel.setBackground(new Color(255, 255, 220));
+
         warningTitleLabel = new JLabel("⚠️ Требуют актуализации в текущем месяце (Уровень 1):");
         warningCounterLabel = new JLabel("0");
         warningCounterLabel.setFont(new Font("Arial", Font.BOLD, 12));
@@ -99,15 +114,12 @@ public class MainWindow extends JFrame {
 
         JButton filterWarningButton = new JButton("Показать");
         filterWarningButton.setMargin(new Insets(2, 8, 2, 8));
-
-// Клик по кнопке или счетчику для быстрой фильтрации
         filterWarningButton.addActionListener(e -> filterDocumentsNeedingActualizationThisMonth());
 
         warningDashboardPanel.add(warningTitleLabel);
         warningDashboardPanel.add(warningCounterLabel);
         warningDashboardPanel.add(filterWarningButton);
 
-// Добавляем виджет на верхнюю панель (например, под панель кнопок)
         topPanel.add(warningDashboardPanel);
 
         // --- ВКЛАДКИ С ТАБЛИЦАМИ ---
@@ -154,7 +166,7 @@ public class MainWindow extends JFrame {
             filterManager.applyFilter();
             int selectedTab = tabbedPane.getSelectedIndex();
             updateStatus(selectedTab + 1);
-            updateWarningDashboardCount(); // <--- Обновляем счетчик при смене вкладки
+            updateWarningDashboardCount();
         });
 
         // --- НИЖНЯЯ ПАНЕЛЬ СТАТУСА ---
@@ -178,17 +190,32 @@ public class MainWindow extends JFrame {
         btnSave.addActionListener(e -> exportCurrentTabToExcel());
 
         auditButton.addActionListener(e -> {
-            if (PasswordProtectionManager.requestAdminAccess(this)) {
-                String logData = AuditLogger.getInstance().readEncryptedLog();
-                JTextArea textArea = new JTextArea(logData, 20, 50);
-                textArea.setEditable(false);
-                JOptionPane.showMessageDialog(this, new JScrollPane(textArea), "Зашифрованный журнал аудита", JOptionPane.INFORMATION_MESSAGE);
+            if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+                JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+                return;
             }
+            if (currentUser.getRole() == User.Role.OPERATOR) {
+                if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                    JOptionPane.showMessageDialog(this, "Неверный пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
+            }
+            String logData = AuditLogger.getInstance().readEncryptedLog();
+            JTextArea textArea = new JTextArea(logData, 20, 50);
+            textArea.setEditable(false);
+            JOptionPane.showMessageDialog(this, new JScrollPane(textArea), "Зашифрованный журнал аудита", JOptionPane.INFORMATION_MESSAGE);
         });
 
         btnRestore.addActionListener(e -> {
-            if (!PasswordProtectionManager.requestAdminAccess(this)) {
+            if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+                JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
                 return;
+            }
+            if (currentUser.getRole() == User.Role.OPERATOR) {
+                if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                    JOptionPane.showMessageDialog(this, "Неверный пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                    return;
+                }
             }
 
             JFileChooser fileChooser = new JFileChooser(new File("backups"));
@@ -224,7 +251,7 @@ public class MainWindow extends JFrame {
             }
         });
 
-        passwordButton.addActionListener(e -> PasswordProtectionManager.changePassword(MainWindow.this));
+        passwordButton.addActionListener(e -> PasswordProtectionManager.changePassword(MainWindow.this, currentUser));
 
         // --- ЗАГРУЗКА ИЗ ФАЙЛА ИЛИ ИНИЦИАЛИЗАЦИЯ ---
         loadDataFromFile();
@@ -254,15 +281,13 @@ public class MainWindow extends JFrame {
                 addDocumentToUI(doc);
             }
         }
-        // ОБЯЗАТЕЛЬНО обновляем счетчик дашборда после загрузки всех данных
         updateWarningDashboardCount();
     }
 
     private void updateWarningDashboardCount() {
         int currentTabIndex = tabbedPane.getSelectedIndex();
-        int currentLevel = currentTabIndex + 1; // Уровни от 1 до 5
+        int currentLevel = currentTabIndex + 1;
 
-        // Обновляем текст заголовка виджета, показывая текущий уровень
         if (warningTitleLabel != null) {
             warningTitleLabel.setText("⚠️ Требуют актуализации в текущем месяце (Уровень " + currentLevel + "):");
         }
@@ -272,7 +297,6 @@ public class MainWindow extends JFrame {
         int count = 0;
 
         for (Document doc : documentList) {
-            // Считаем только для документов текущего уровня вкладки
             if (doc.getSmkLevel() != currentLevel) {
                 continue;
             }
@@ -287,7 +311,6 @@ public class MainWindow extends JFrame {
                 LocalDate actDate = LocalDate.parse(actDateStr.trim(), formatter);
                 LocalDate nextActDate = actDate.plusDays(365);
 
-                // Проверяем, попадает ли дата следующей актуализации на текущий месяц/год или уже прошла
                 if ((nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth) || nextActDate.isBefore(LocalDate.now())) {
                     count++;
                 }
@@ -302,6 +325,7 @@ public class MainWindow extends JFrame {
             warningDashboardPanel.setVisible(true);
         }
     }
+
     private void exportCurrentTabToExcel() {
         JTable currentTable = getCurrentTable();
         int selectedIndex = tabbedPane.getSelectedIndex();
@@ -313,6 +337,11 @@ public class MainWindow extends JFrame {
     }
 
     private void onAddDocumentButtonClicked() {
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         int currentActiveLevel = tabbedPane.getSelectedIndex() + 1;
 
         AddDocumentDialog dialog = new AddDocumentDialog(this, currentActiveLevel);
@@ -322,13 +351,6 @@ public class MainWindow extends JFrame {
         if (newDoc != null) {
             addDocument(newDoc);
 
-            AuditLogger.getInstance().log(
-                    "Оператор",
-                    "СОЗДАНИЕ",
-                    newDoc.getId(),
-                    "Добавлен документ: " + newDoc.getTitle()
-            );
-
             tabbedPane.setSelectedIndex(newDoc.getSmkLevel() - 1);
             updateStatus(newDoc.getSmkLevel());
         }
@@ -337,6 +359,12 @@ public class MainWindow extends JFrame {
     public void addDocument(Document doc) {
         addDocumentToUI(doc);
         DataManager.saveDocuments(documentList);
+        AuditLogger.getInstance().log(
+                currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]",
+                "СОЗДАНИЕ",
+                doc.getId(),
+                "Добавлен документ: " + doc.getTitle()
+        );
     }
 
     private void addDocumentToUI(Document doc) {
@@ -351,7 +379,6 @@ public class MainWindow extends JFrame {
 
             SwingUtilities.invokeLater(() -> DocumentTableManager.updateRowHeights(tables[tabIndex]));
         }
-        // Обновляем счетчик при добавлении
         updateWarningDashboardCount();
     }
 
@@ -362,12 +389,11 @@ public class MainWindow extends JFrame {
         int currentMonth = LocalDate.now().getMonthValue();
         int currentYear = LocalDate.now().getYear();
 
-        // Создаем кастомный фильтр для TableRowSorter текущей таблицы
         sorter.setRowFilter(new RowFilter<DefaultTableModel, Integer>() {
             @Override
             public boolean include(Entry<? extends DefaultTableModel, ? extends Integer> entry) {
                 int modelRow = entry.getIdentifier();
-                Object idValue = entry.getModel().getValueAt(modelRow, 0); // ID документа
+                Object idValue = entry.getModel().getValueAt(modelRow, 0);
                 if (idValue == null) return false;
 
                 String targetId = idValue.toString().trim();
@@ -391,7 +417,6 @@ public class MainWindow extends JFrame {
                     LocalDate actDate = LocalDate.parse(actDateStr.trim(), formatter);
                     LocalDate nextActDate = actDate.plusDays(365);
 
-                    // Оставляем только те, у которых срок в этом месяце или просрочен
                     boolean isThisMonth = (nextActDate.getYear() == currentYear && nextActDate.getMonthValue() == currentMonth);
                     boolean isExpired = nextActDate.isBefore(LocalDate.now());
 
@@ -417,6 +442,18 @@ public class MainWindow extends JFrame {
     }
 
     private void deleteSelectedDocument() {
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        if (currentUser.getRole() == User.Role.OPERATOR) {
+            if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                JOptionPane.showMessageDialog(this, "Видеть пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                return;
+            }
+        }
+
         int currentTabIndex = tabbedPane.getSelectedIndex();
         JTable currentTable = tables[currentTabIndex];
         DefaultTableModel currentModel = tableModels[currentTabIndex];
@@ -424,10 +461,6 @@ public class MainWindow extends JFrame {
         int viewRow = currentTable.getSelectedRow();
         if (viewRow == -1) {
             JOptionPane.showMessageDialog(this, "Пожалуйста, выберите запись для удаления!", "Удаление", JOptionPane.WARNING_MESSAGE);
-            return;
-        }
-
-        if (!PasswordProtectionManager.requestAdminAccess(this)) {
             return;
         }
 
@@ -449,11 +482,10 @@ public class MainWindow extends JFrame {
             currentModel.removeRow(modelRow);
 
             DataManager.saveDocuments(documentList);
-            // Обновляем счетчик при добавлении
             updateWarningDashboardCount();
 
             AuditLogger.getInstance().log(
-                    "Администратор",
+                    currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]",
                     "УДАЛЕНИЕ",
                     docId,
                     "Удален документ: " + docTitle
@@ -465,6 +497,11 @@ public class MainWindow extends JFrame {
     }
 
     private void openEditDialog() {
+        if (currentUser.getRole() == User.Role.LABORATORY_ASSISTANT) {
+            JOptionPane.showMessageDialog(this, "У вас роль 'Лаборант'. Доступно только чтение. Обратитесь к менеджеру по качеству.", "Доступ ограничен", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
         int currentTabIndex = tabbedPane.getSelectedIndex();
         JTable currentTable = tables[currentTabIndex];
         DefaultTableModel currentModel = tableModels[currentTabIndex];
@@ -495,8 +532,14 @@ public class MainWindow extends JFrame {
 
             Document updatedDoc = editDialog.getCreatedDocument();
             if (updatedDoc != null) {
-                updatedDoc.setId(originalDocId);
+                if (currentUser.getRole() == User.Role.OPERATOR && (!originalDocId.equals(updatedDoc.getId()) || oldLevel != updatedDoc.getSmkLevel())) {
+                    if (!PasswordProtectionManager.requestAdminAccess(this)) {
+                        JOptionPane.showMessageDialog(this, "Видеть пароль. Обратитесь к менеджеру по качеству.", "Доступ запрещен", JOptionPane.WARNING_MESSAGE);
+                        return;
+                    }
+                }
 
+                updatedDoc.setId(originalDocId);
                 String changeDetails = docToEdit.getDiff(updatedDoc);
 
                 docToEdit.setTitle(updatedDoc.getTitle());
@@ -548,11 +591,10 @@ public class MainWindow extends JFrame {
                 }
 
                 DataManager.saveDocuments(documentList);
-                // Обновляем счетчик при добавлении
                 updateWarningDashboardCount();
 
                 AuditLogger.getInstance().log(
-                        "Оператор",
+                        currentUser.getFullName() + " [" + currentUser.getRole().getDisplayName() + "]",
                         "ИЗМЕНЕНИЕ",
                         originalDocId,
                         changeDetails
@@ -561,7 +603,6 @@ public class MainWindow extends JFrame {
                 updateStatus(tabbedPane.getSelectedIndex() + 1);
             }
         }
-
     }
 
     private void updateStatus(int level) {
@@ -605,11 +646,22 @@ public class MainWindow extends JFrame {
     }
 
     public static void main(String[] args) {
-        SwingUtilities.invokeLater(() -> new MainWindow().setVisible(true));
+        SwingUtilities.invokeLater(() -> {
+            JFrame dummyFrame = new JFrame();
+            LoginDialog loginDialog = new LoginDialog(dummyFrame);
+            loginDialog.setVisible(true);
+
+            User user = loginDialog.getAuthenticatedUser();
+            if (user != null) {
+                dummyFrame.dispose();
+                new MainWindow(user).setVisible(true);
+            } else {
+                System.exit(0);
+            }
+        });
     }
 
     private void applyRowColoring(JTable table) {
-        // Передаем в конструктор имя колонки статуса и общий список документов для Warning System
         StatusRowTableCellRenderer renderer = new StatusRowTableCellRenderer("Статус", documentList);
 
         table.setDefaultRenderer(Object.class, renderer);
